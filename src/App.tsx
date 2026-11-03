@@ -41,10 +41,19 @@ import {
   type BenchmarkDefinition,
   type BenchmarkId,
 } from "./compliance-benchmarks";
+import {
+  AI_MINIMUM_READY_SCORE,
+  AI_ORGANISATION_FIELDS,
+  AI_SCORE_RATINGS,
+  aiScoreToAnswer,
+  calculateAiReadiness,
+  type AiScoreValue,
+} from "./ai-data-readiness";
 
 type ViewKey = "overview" | "high-level" | "compliance-overview" | `compliance:${BenchmarkId}` | AssetCategorySlug;
-type BenchmarkResponse = { answer: AssessmentAnswer; evidence: string };
+type BenchmarkResponse = { answer: AssessmentAnswer; evidence: string; score?: AiScoreValue };
 type BenchmarkResponseSet = Record<string, BenchmarkResponse>;
+type OrganisationValues = Record<string, string>;
 
 const INITIAL_VISIBLE_ROWS = 200;
 
@@ -241,6 +250,8 @@ function ComplianceAssessment({
   onBack,
   onExport,
   exporting,
+  organisation,
+  onOrganisationChange,
 }: {
   benchmark: BenchmarkDefinition;
   responses: BenchmarkResponseSet;
@@ -253,7 +264,10 @@ function ComplianceAssessment({
   onBack: () => void;
   onExport: () => void;
   exporting: boolean;
+  organisation: OrganisationValues;
+  onOrganisationChange: (fieldId: string, value: string) => void;
 }) {
+  const maturity = benchmark.scoring === "maturity";
   const assessmentQuestions = assessmentDepth === "pre" ? benchmark.preQuestions : benchmark.fullQuestions;
   const visibleQuestions = assessmentQuestions.filter((question) => benchmark.id !== "cis" || assessmentDepth === "pre" || (question.tier ?? 1) <= cisTier);
   const result = visibleQuestions.reduce((summary, question) => {
@@ -267,6 +281,7 @@ function ComplianceAssessment({
   const ready = visibleQuestions.length > 0 && assessed === visibleQuestions.length && result.partial === 0 && result.fail === 0;
   const started = assessed > 0;
   const sections = [...new Set(visibleQuestions.map((question) => question.section))];
+  const aiResult = maturity ? calculateAiReadiness(visibleQuestions, (id) => responses[id]?.score) : null;
 
   return (
     <div className="space-y-5">
@@ -304,7 +319,7 @@ function ComplianceAssessment({
             className={`rounded-2xl border-2 p-4 text-left ${assessmentDepth === "pre" ? "border-[#7E3AED] bg-[#7E3AED]/5" : "border-slate-200 bg-white hover:border-slate-300"}`}
           >
             <p className="text-xs font-black uppercase tracking-[0.14em] text-[#7E3AED]">Pre-readiness assessment</p>
-            <p className="mt-1 text-sm font-bold text-slate-800">25 core questions for an initial benchmark screening.</p>
+            <p className="mt-1 text-sm font-bold text-slate-800">{benchmark.preQuestions.length} core questions for an initial benchmark screening.</p>
           </button>
           <button
             onClick={() => onAssessmentDepthChange("full")}
@@ -316,14 +331,47 @@ function ComplianceAssessment({
         </div>
       </div>
 
+      {maturity && (
+        <section className="rounded-[26px] bg-white p-6 shadow-xl ring-1 ring-[#D9E7F5]">
+          <h3 className="text-lg font-black">Organisation information <span className="text-xs font-bold text-slate-400">(not scored)</span></h3>
+          <div className="mt-4 grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+            {AI_ORGANISATION_FIELDS.map((field) => (
+              <label key={field.id} className={`space-y-1.5 ${field.type === "textarea" ? "md:col-span-2 xl:col-span-3" : ""}`}>
+                <span className="text-xs font-black uppercase tracking-[0.12em] text-slate-500">{field.id} · {field.label}</span>
+                {field.type === "textarea" ? (
+                  <textarea value={organisation[field.id] ?? ""} onChange={(event) => onOrganisationChange(field.id, event.target.value)} rows={2} className="w-full resize-y rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm outline-none focus:border-[#7E3AED]" />
+                ) : (
+                  <input type={field.type} value={organisation[field.id] ?? ""} onChange={(event) => onOrganisationChange(field.id, event.target.value)} className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm outline-none focus:border-[#7E3AED]" />
+                )}
+              </label>
+            ))}
+          </div>
+          <div className="mt-5 grid gap-2 sm:grid-cols-2 xl:grid-cols-6">
+            {AI_SCORE_RATINGS.map((rating) => (
+              <div key={rating.score} className="rounded-xl bg-slate-50 p-3 text-xs">
+                <p className="font-black text-[#7E3AED]">{rating.score} · {rating.label}</p>
+                <p className="mt-1 font-semibold leading-4 text-slate-500">{rating.description}</p>
+              </div>
+            ))}
+          </div>
+          <p className="mt-3 text-xs font-bold text-slate-500">Minimum AI-ready score per control: {AI_MINIMUM_READY_SCORE}.</p>
+        </section>
+      )}
+
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
-        {[
+        {(aiResult ? [
+          ["Questions", visibleQuestions.length, "bg-[#071A3F] text-white"],
+          ["Scored", `${aiResult.scored}/${visibleQuestions.length}`, "bg-[#7E3AED] text-white"],
+          ["At or above minimum", aiResult.scored - aiResult.belowMinimum, "bg-emerald-600 text-white"],
+          ["Below minimum", aiResult.belowMinimum, "bg-[#FF2AA0] text-white"],
+          ["AI readiness", `${aiResult.percent}%`, "bg-[#00D4FF] text-[#071A3F]"],
+        ] : [
           ["Questions", visibleQuestions.length, "bg-[#071A3F] text-white"],
           ["Assessed", `${assessed}/${visibleQuestions.length}`, "bg-[#7E3AED] text-white"],
           ["Pass", result.pass, "bg-emerald-600 text-white"],
           ["Partial / Fail", result.partial + result.fail, "bg-[#FF2AA0] text-white"],
           ["Readiness", `${score}%`, "bg-[#00D4FF] text-[#071A3F]"],
-        ].map(([label, value, className]) => (
+        ]).map(([label, value, className]) => (
           <div key={String(label)} className={`rounded-[22px] p-5 shadow-lg ${className}`}>
             <p className="text-2xl font-black">{String(value)}</p>
             <p className="mt-3 text-[10px] font-black uppercase tracking-[0.14em]">{String(label)}</p>
@@ -331,6 +379,27 @@ function ComplianceAssessment({
         ))}
       </div>
 
+      {aiResult ? (
+        <div className={`rounded-[24px] border-2 p-5 ${aiResult.scored === 0 ? "border-slate-200 bg-white text-slate-700" : aiResult.band.status === "Green" ? "border-emerald-300 bg-emerald-50 text-emerald-900" : aiResult.band.status === "Amber" ? "border-amber-300 bg-amber-50 text-amber-900" : "border-red-200 bg-red-50 text-red-900"}`}>
+          <p className="text-xs font-black uppercase tracking-[0.16em]">Weighted AI readiness result</p>
+          <p className="mt-1 text-2xl font-black">{aiResult.scored === 0 ? "NOT YET SCORED" : `${aiResult.band.status.toUpperCase()} — ${aiResult.band.label.toUpperCase()}`}</p>
+          <p className="mt-2 text-sm font-semibold">
+            {aiResult.criticalControls.length > 0
+              ? `${aiResult.criticalControls.length} control(s) scored 0 (critical deficiency: ${aiResult.criticalControls.map((question) => question.reference).join(", ")}). The overall result is capped at Amber until these are resolved.`
+              : aiResult.scored === 0
+                ? "Score each control 0–5 and record evidence to calculate weighted readiness."
+                : `${aiResult.belowMinimum} of ${aiResult.scored} scored controls are below the minimum AI-ready score of ${AI_MINIMUM_READY_SCORE}.`}
+          </p>
+          <div className="mt-4 grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
+            {aiResult.sectionScores.map((item) => (
+              <div key={item.section} className="rounded-xl bg-white/70 px-3 py-2 text-xs font-bold">
+                <span>{item.section} ({item.weight}%)</span>
+                <span className="float-right font-black">{item.average === null ? "—" : `${item.average.toFixed(1)}/5`}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      ) : (
       <div className={`rounded-[24px] border-2 p-5 ${ready ? "border-emerald-300 bg-emerald-50 text-emerald-900" : started ? "border-red-200 bg-red-50 text-red-900" : "border-slate-200 bg-white text-slate-700"}`}>
         <p className="text-xs font-black uppercase tracking-[0.16em]">Indicative current-state result</p>
         <p className="mt-1 text-2xl font-black">{ready ? "PASS-READY" : started ? "FAIL / NOT READY" : "NOT YET ASSESSED"}</p>
@@ -342,6 +411,7 @@ function ComplianceAssessment({
               : "Answer the questions and record supporting evidence to calculate readiness."}
         </p>
       </div>
+      )}
 
       {sections.map((section) => (
         <section key={section} className="overflow-hidden rounded-[26px] bg-white shadow-xl ring-1 ring-[#D9E7F5]">
@@ -371,7 +441,24 @@ function ComplianceAssessment({
                     )}
                   </div>
                   <label className="space-y-1.5">
-                    <span className="text-xs font-black uppercase tracking-[0.12em] text-slate-500">Assessment</span>
+                    <span className="text-xs font-black uppercase tracking-[0.12em] text-slate-500">{maturity ? "Score (0–5)" : "Assessment"}</span>
+                    {maturity ? (
+                      <select
+                        value={response.score === undefined || response.score === null ? "" : String(response.score)}
+                        onChange={(event) => {
+                          const raw = event.target.value;
+                          const score: AiScoreValue = raw === "" ? null : raw === "na" ? "na" : Number(raw);
+                          onChange(question.id, { score, answer: aiScoreToAnswer(score) });
+                        }}
+                        className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm font-bold outline-none focus:border-[#7E3AED]"
+                      >
+                        <option value="">Not scored</option>
+                        {AI_SCORE_RATINGS.map((rating) => (
+                          <option key={rating.score} value={rating.score}>{rating.score} – {rating.label}</option>
+                        ))}
+                        <option value="na">N/A – Not applicable</option>
+                      </select>
+                    ) : (
                     <select
                       value={response.answer}
                       onChange={(event) => onChange(question.id, { answer: event.target.value as AssessmentAnswer })}
@@ -383,6 +470,7 @@ function ComplianceAssessment({
                       <option value="fail">Fail</option>
                       <option value="not-applicable">Not applicable</option>
                     </select>
+                    )}
                   </label>
                   <label className="space-y-1.5">
                     <span className="text-xs font-black uppercase tracking-[0.12em] text-slate-500">Client answer / evidence</span>
@@ -455,7 +543,7 @@ function ServicesHub({
               </span>
               <ChevronRight className="size-4 shrink-0 text-[#00A6C7] transition group-hover:translate-x-0.5" />
             </button>
-            {futureService("AI Data Readiness")}
+            {serviceButton("AI Data Readiness", () => onBenchmark("ai-data-readiness"))}
             {futureService("Back-up and Business Continuity Assessment")}
             {futureService("MSP / IT Services Evaluation")}
           </div>
@@ -552,6 +640,7 @@ export function AuditBuilder() {
   const [addCategory, setAddCategory] = React.useState<AssetCategorySlug | null>(null);
   const [presenting, setPresenting] = React.useState(false);
   const [benchmarkResponses, setBenchmarkResponses] = React.useState<Partial<Record<BenchmarkId, BenchmarkResponseSet>>>({});
+  const [organisation, setOrganisation] = React.useState<OrganisationValues>({});
   const [assessmentDepth, setAssessmentDepth] = React.useState<AssessmentDepth>("pre");
   const [cisTier, setCisTier] = React.useState<1 | 2 | 3>(1);
   const fileInputRef = React.useRef<HTMLInputElement>(null);
@@ -691,6 +780,7 @@ export function AuditBuilder() {
     navigate("overview");
     setStatus("Reset complete. No temporary audit data remains on this page.");
     setBenchmarkResponses({});
+    setOrganisation({});
     setCisTier(1);
     if (fileInputRef.current) fileInputRef.current.value = "";
   }
@@ -711,7 +801,7 @@ export function AuditBuilder() {
   async function exportBenchmarkPresentation(benchmarkId: BenchmarkId) {
     setPresenting(true);
     try {
-      await exportCompliancePowerPoint(BENCHMARKS[benchmarkId], benchmarkResponses[benchmarkId] ?? {}, clientName, cisTier, assessmentDepth);
+      await exportCompliancePowerPoint(BENCHMARKS[benchmarkId], benchmarkResponses[benchmarkId] ?? {}, clientName, cisTier, assessmentDepth, organisation);
     } catch (error) {
       console.error("Unable to generate compliance PowerPoint report", error);
       setStatus("The compliance PowerPoint report could not be generated. Review the browser console for details and try again.");
@@ -804,6 +894,8 @@ export function AuditBuilder() {
             onBack={() => setShowHub(true)}
             onExport={() => void exportBenchmarkPresentation(activeBenchmarkId)}
             exporting={presenting}
+            organisation={organisation}
+            onOrganisationChange={(fieldId, value) => setOrganisation((current) => ({ ...current, [fieldId]: value }))}
           />
         </div>
       ) : !audit ? (

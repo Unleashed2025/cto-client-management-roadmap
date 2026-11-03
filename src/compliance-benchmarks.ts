@@ -1,7 +1,8 @@
 import { DANZELL_QUESTIONS } from "./cyber-essentials-danzell";
 import { ISO_27001_ANNEX_A_QUESTIONS } from "./iso-27001-annex-a";
+import { AI_DATA_READINESS_PRE_QUESTIONS, AI_DATA_READINESS_QUESTIONS } from "./ai-data-readiness";
 
-export type BenchmarkId = "cis" | "cyber-essentials" | "cyber-essentials-plus" | "iso-27001";
+export type BenchmarkId = "cis" | "cyber-essentials" | "cyber-essentials-plus" | "iso-27001" | "ai-data-readiness";
 export type AssessmentAnswer = "not-assessed" | "pass" | "partial" | "fail" | "not-applicable";
 export type AssessmentDepth = "pre" | "full";
 
@@ -27,6 +28,7 @@ export interface BenchmarkDefinition {
   sourceLabel: string;
   sourceUrl: string;
   notice: string;
+  scoring?: "maturity";
   preQuestions: BenchmarkQuestion[];
   fullQuestions: BenchmarkQuestion[];
 }
@@ -338,6 +340,19 @@ export const BENCHMARKS: Record<BenchmarkId, BenchmarkDefinition> = {
     notice: "The full assessment covers clauses 4–10 and all 93 Annex A control identifiers using original readiness wording. Obtain the licensed ISO standard for certification work.",
     preQuestions: isoPreQuestions,
     fullQuestions: isoFullQuestions,
+  },
+  "ai-data-readiness": {
+    id: "ai-data-readiness",
+    title: "AI Data Readiness & Security Assessment",
+    shortTitle: "AI Data Readiness",
+    version: "v1.0 · scored 0–5",
+    description: "Assesses whether Microsoft 365 data, permissions, identity and governance are ready for Copilot and AI agents. Each control is scored 0–5, with 3 as the minimum AI-ready score.",
+    sourceLabel: "Microsoft Copilot readiness guidance",
+    sourceUrl: "https://learn.microsoft.com/en-us/copilot/microsoft-365/microsoft-365-copilot-blueprint-oversharing",
+    notice: "Unleashed assessment methodology. Sections are weighted (Permissions & Oversharing 20%, Sensitive Data 15%, Data Quality 15%, others 5–10%). A control scored 0 caps the overall result at Amber so it cannot be hidden by a high average.",
+    scoring: "maturity",
+    preQuestions: AI_DATA_READINESS_PRE_QUESTIONS,
+    fullQuestions: AI_DATA_READINESS_QUESTIONS,
   },
 };
 
