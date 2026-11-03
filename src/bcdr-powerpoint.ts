@@ -110,7 +110,7 @@ export async function exportBcdrPowerPoint(apps: BcdrApp[], clientName: string) 
       ["Hosting & data", `Hosting: ${text("hostModel")}${app.hostSaasManaged === "Yes" ? " (provider-managed)" : ""} · Location: ${text("hostPrimary")}\nData: ${catalogueRow(app).data} · Personal data: ${text("dataPersonal")} · Retention: ${text("dataRetention")}`],
       ["Backup", `Backed up: ${text("bkProtected")} · ${text("bkProduct")} (${text("bkProvider")}) · Retention: ${text("bkRetention")}\nEncrypted: ${text("bkEncrypted")} · Monitored: ${text("bkMonitored")}`],
       ["Business continuity & testing", `BCP: ${text("bcPlan")} · Included: ${text("bcIncluded")} · Last restore test: ${text("tsLastRestore")} · Restore successful: ${text("tsRestoreOk")}\nDR tested: ${text("tsDr")} (${text("tsDrDate")}) · Evidence: ${text("tsEvidence")}`],
-    ]), { x: 0.55, y: 1.3, w: 12.2, colW: [2.2, 10], rowH: 0.95, fontSize: 9 });
+    ]), { x: 0.55, y: 1.3, w: 12.2, colW: [2.2, 10], rowH: [0.38, 0.95, 0.95, 0.95, 0.95, 0.95], fontSize: 9 });
 
     const recovery = pptx.addSlide();
     addHeader(recovery, `${name} — Recovery, cost & recommendation`, `${clientName} · Business requirement vs. technical reality`, COLORS.pink);
@@ -135,7 +135,7 @@ export async function exportBcdrPowerPoint(apps: BcdrApp[], clientName: string) 
       ["Key findings & risks", `${text("findings")}\n${text("risks")}`],
       ["Recommendations", `Action: ${text("action")}\n${text("recommendations")}\n${text("improvements")}`],
       ["Comments", `Assessor: ${text("assessorComments")}\nCustomer: ${text("customerComments")}`],
-    ]), { x: 0.55, y: 4.2, w: 12.2, colW: [2.2, 10], rowH: 0.65, fontSize: 8.5 });
+    ]), { x: 0.55, y: 4.2, w: 12.2, colW: [2.2, 10], rowH: [0.36, 0.65, 0.65, 0.65, 0.65], fontSize: 8.5 });
   }
 
   const output = await pptx.write({ outputType: "blob", compression: true });

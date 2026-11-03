@@ -188,11 +188,11 @@ export async function exportCompliancePowerPoint(
 
   for (const section of sections) {
     const sectionQuestions = questions.filter((question) => question.section === section);
-    for (let start = 0; start < sectionQuestions.length; start += 3) {
-      const pageQuestions = sectionQuestions.slice(start, start + 3);
+    for (let start = 0; start < sectionQuestions.length; start += 6) {
+      const pageQuestions = sectionQuestions.slice(start, start + 6);
       const slide = pptx.addSlide();
-      const page = Math.floor(start / 3) + 1;
-      const pages = Math.ceil(sectionQuestions.length / 3);
+      const page = Math.floor(start / 6) + 1;
+      const pages = Math.ceil(sectionQuestions.length / 6);
       addHeader(slide, pages > 1 ? `${section} (${page}/${pages})` : section, `${clientName} · ${benchmark.shortTitle} · ${assessmentLabel}`, COLORS.purple);
       slide.addTable(tableRows(
         ["Question", "Result", "Client Answer / Evidence"],
@@ -211,7 +211,7 @@ export async function exportCompliancePowerPoint(
         w: 12.2,
         h: 5.75,
         colW: [6.1, 1.35, 4.75],
-        rowH: 1.72,
+        rowH: [0.35, ...pageQuestions.map(() => 0.9)],
         fontSize: 8.2,
         margin: 0.055,
         border: { color: COLORS.line, pt: 0.8 },
@@ -252,7 +252,7 @@ export async function exportCompliancePowerPoint(
             [extras.futureRequirement, extras.customerComments].filter(Boolean).join("\n\n") || "—",
           ];
         }),
-      ), { x: 0.55, y: 1.3, w: 12.2, h: 5.75, colW: [3.2, 1.5, 2.5, 2.5, 2.5], rowH: 1.3, fontSize: 8, margin: 0.05, border: { color: COLORS.line, pt: 0.8 }, autoPage: false });
+      ), { x: 0.55, y: 1.3, w: 12.2, colW: [3.2, 1.5, 2.5, 2.5, 2.5], rowH: [0.35, ...page.map(() => 1.3)], fontSize: 8, margin: 0.05, border: { color: COLORS.line, pt: 0.8 }, autoPage: false });
       addFooter(slide, `${page.length} of ${flagged.length} annotated question(s)`);
     }
 
@@ -334,7 +334,7 @@ export async function exportCompliancePowerPoint(
           [entry.finding.recommendation, entry.finding.action].filter(Boolean).join("\n\n") || "Not recorded",
           `${entry.finding.owner || "Unassigned"}\n${entry.finding.targetDate || "No date"}\n${entry.finding.status}${entry.finding.retest ? `\nRetest: ${entry.finding.retest}` : ""}`,
         ]),
-      ), { x: 0.55, y: 1.3, w: 12.2, h: 5.75, colW: [3, 1.3, 3, 3, 1.9], rowH: 1.72, fontSize: 8, margin: 0.05, border: { color: COLORS.line, pt: 0.8 }, autoPage: false });
+      ), { x: 0.55, y: 1.3, w: 12.2, colW: [3, 1.3, 3, 3, 1.9], rowH: [0.35, ...page.map(() => 1.72)], fontSize: 8, margin: 0.05, border: { color: COLORS.line, pt: 0.8 }, autoPage: false });
       addFooter(slide, `${page.length} of ${findings.length} finding(s)`);
     }
   }

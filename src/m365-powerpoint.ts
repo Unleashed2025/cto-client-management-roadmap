@@ -121,7 +121,7 @@ export async function exportM365PowerPoint(state: M365State, clientName: string)
       ["Why this matters", dash(i.riskText)],
       ["Unleashed recommendation", dash(i.recommendation)],
       ["Expected outcome", `Estimated Secure Score movement of +${c.gain} points. ${i.implNotes ? `Notes: ${i.implNotes}` : ""}`.trim()],
-    ]), { x: 0.55, y: 2.45, w: 12.2, colW: [2.6, 9.6], rowH: 0.85, fontSize: 10.5 });
+    ]), { x: 0.55, y: 2.45, w: 12.2, colW: [2.6, 9.6], rowH: [0.38, 0.85, 0.85, 0.85, 0.85], fontSize: 10.5 });
     footer(slide, estimate);
   });
 
