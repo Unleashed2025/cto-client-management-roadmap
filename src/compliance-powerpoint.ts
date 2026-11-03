@@ -1,6 +1,6 @@
 import type PptxGenJS from "pptxgenjs";
 import type { AssessmentAnswer, AssessmentDepth, BenchmarkDefinition } from "./compliance-benchmarks";
-import { AI_ORGANISATION_FIELDS, AI_SCORE_RATINGS, calculateAiReadiness, type AiScoreValue } from "./ai-data-readiness";
+import { AI_ORGANISATION_FIELDS, AI_REMEDIATION_PHASES, AI_SCORE_RATINGS, calculateAiReadiness, collectAiFindings, type AiFinding, type AiScoreValue } from "./ai-data-readiness";
 import { downloadBlob } from "./download-file";
 
 const COLORS = {
@@ -15,7 +15,7 @@ const COLORS = {
   line: "D9E7F5",
 };
 
-type BenchmarkResponse = { answer: AssessmentAnswer; evidence: string; score?: AiScoreValue };
+type BenchmarkResponse = { answer: AssessmentAnswer; evidence: string; score?: AiScoreValue; finding?: Partial<AiFinding> };
 
 function scoreLabel(score: AiScoreValue): string {
   if (score === "na") return "N/A";
@@ -215,6 +215,37 @@ export async function exportCompliancePowerPoint(
         autoPage: false,
       });
       addFooter(slide, `${pageQuestions.length} of ${sectionQuestions.length} section question(s) · ${benchmark.sourceLabel}`);
+    }
+  }
+
+  if (aiResult) {
+    const findings = collectAiFindings(questions, (id) => responses[id]);
+    const roadmap = pptx.addSlide();
+    addHeader(roadmap, "Remediation Roadmap", `${clientName} · Secure → Clean → Govern → Enable → Measure`, COLORS.pink);
+    roadmap.addTable(tableRows(
+      ["Phase", "Purpose", "Findings", "Critical / High"],
+      AI_REMEDIATION_PHASES.map(([phase, description]) => {
+        const phaseFindings = findings.filter((entry) => entry.phase === phase);
+        return [phase, description, String(phaseFindings.length), String(phaseFindings.filter((entry) => entry.risk === "Critical" || entry.risk === "High").length)];
+      }),
+    ), { x: 0.55, y: 1.3, w: 12.2, colW: [1.8, 7.2, 1.4, 1.8], rowH: 0.6, fontSize: 10, margin: 0.06, border: { color: COLORS.line, pt: 0.8 }, autoPage: false });
+    addFooter(roadmap, `Built from ${findings.length} control(s) scored below the minimum AI-ready score.`);
+
+    for (let start = 0; start < findings.length; start += 3) {
+      const page = findings.slice(start, start + 3);
+      const slide = pptx.addSlide();
+      addHeader(slide, `Detailed Findings (${Math.floor(start / 3) + 1}/${Math.ceil(findings.length / 3)})`, `${clientName} · ${benchmark.shortTitle}`, COLORS.pink);
+      slide.addTable(tableRows(
+        ["Finding", "Risk / Phase", "Situation & impact", "Recommendation & action", "Owner / Date / Status"],
+        page.map((entry) => [
+          `${entry.question.reference} (score ${entry.score})\n${entry.finding.title || entry.question.prompt}`,
+          `${entry.risk}\n${entry.phase}`,
+          [entry.finding.currentSituation, entry.finding.impact].filter(Boolean).join("\n\n") || "Not recorded",
+          [entry.finding.recommendation, entry.finding.action].filter(Boolean).join("\n\n") || "Not recorded",
+          `${entry.finding.owner || "Unassigned"}\n${entry.finding.targetDate || "No date"}\n${entry.finding.status}${entry.finding.retest ? `\nRetest: ${entry.finding.retest}` : ""}`,
+        ]),
+      ), { x: 0.55, y: 1.3, w: 12.2, h: 5.75, colW: [3, 1.3, 3, 3, 1.9], rowH: 1.72, fontSize: 8, margin: 0.05, border: { color: COLORS.line, pt: 0.8 }, autoPage: false });
+      addFooter(slide, `${page.length} of ${findings.length} finding(s)`);
     }
   }
 

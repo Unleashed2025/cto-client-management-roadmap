@@ -44,14 +44,22 @@ import {
 import {
   AI_MINIMUM_READY_SCORE,
   AI_ORGANISATION_FIELDS,
+  AI_REMEDIATION_PHASES,
+  AI_REMEDIATION_STATUSES,
+  AI_RISK_LEVELS,
   AI_SCORE_RATINGS,
+  EMPTY_AI_FINDING,
   aiScoreToAnswer,
   calculateAiReadiness,
+  collectAiFindings,
+  defaultPhase,
+  defaultRisk,
+  type AiFinding,
   type AiScoreValue,
 } from "./ai-data-readiness";
 
 type ViewKey = "overview" | "high-level" | "compliance-overview" | `compliance:${BenchmarkId}` | AssetCategorySlug;
-type BenchmarkResponse = { answer: AssessmentAnswer; evidence: string; score?: AiScoreValue };
+type BenchmarkResponse = { answer: AssessmentAnswer; evidence: string; score?: AiScoreValue; finding?: Partial<AiFinding> };
 type BenchmarkResponseSet = Record<string, BenchmarkResponse>;
 type OrganisationValues = Record<string, string>;
 
@@ -482,13 +490,137 @@ function ComplianceAssessment({
                       className="w-full resize-y rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm outline-none focus:border-[#7E3AED]"
                     />
                   </label>
+                  {maturity && typeof response.score === "number" && response.score < AI_MINIMUM_READY_SCORE && (
+                    <FindingPanel
+                      reference={question.reference}
+                      score={response.score}
+                      finding={{ ...EMPTY_AI_FINDING, ...response.finding }}
+                      onChange={(patch) => onChange(question.id, { finding: { ...response.finding, ...patch } })}
+                    />
+                  )}
                 </div>
               );
             })}
           </div>
         </section>
       ))}
+
+      {aiResult && <RemediationRoadmap findings={collectAiFindings(visibleQuestions, (id) => responses[id])} />}
     </div>
+  );
+}
+
+const FINDING_INPUT = "w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm outline-none focus:border-[#7E3AED]";
+const FINDING_LABEL = "text-[10px] font-black uppercase tracking-[0.12em] text-slate-500";
+
+function FindingPanel({
+  reference,
+  score,
+  finding,
+  onChange,
+}: {
+  reference?: string;
+  score: number;
+  finding: AiFinding;
+  onChange: (patch: Partial<AiFinding>) => void;
+}) {
+  const text = (label: string, key: keyof AiFinding, rows = 2) => (
+    <label className="space-y-1">
+      <span className={FINDING_LABEL}>{label}</span>
+      <textarea value={finding[key]} onChange={(event) => onChange({ [key]: event.target.value })} rows={rows} className={`${FINDING_INPUT} resize-y`} />
+    </label>
+  );
+  return (
+    <div className="space-y-3 rounded-2xl border-2 border-[#FF2AA0]/30 bg-[#FF2AA0]/5 p-4 xl:col-span-3">
+      <p className="text-xs font-black uppercase tracking-[0.14em] text-[#B8157A]">Finding &amp; remediation · {reference} scored {score} (below minimum {AI_MINIMUM_READY_SCORE})</p>
+      <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+        <label className="space-y-1 xl:col-span-2">
+          <span className={FINDING_LABEL}>Finding title</span>
+          <input value={finding.title} onChange={(event) => onChange({ title: event.target.value })} className={FINDING_INPUT} />
+        </label>
+        <label className="space-y-1">
+          <span className={FINDING_LABEL}>Risk</span>
+          <select value={finding.risk || defaultRisk(score)} onChange={(event) => onChange({ risk: event.target.value as AiFinding["risk"] })} className={FINDING_INPUT}>
+            {AI_RISK_LEVELS.map((level) => <option key={level}>{level}</option>)}
+          </select>
+        </label>
+        <label className="space-y-1">
+          <span className={FINDING_LABEL}>Roadmap phase</span>
+          <select value={finding.phase || defaultPhase(reference)} onChange={(event) => onChange({ phase: event.target.value as AiFinding["phase"] })} className={FINDING_INPUT}>
+            {AI_REMEDIATION_PHASES.map(([phase]) => <option key={phase}>{phase}</option>)}
+          </select>
+        </label>
+      </div>
+      <div className="grid gap-3 md:grid-cols-2">
+        {text("Current situation", "currentSituation")}
+        {text("Risk / AI impact", "impact")}
+        {text("Recommendation", "recommendation")}
+        {text("Remediation action", "action")}
+      </div>
+      <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+        <label className="space-y-1">
+          <span className={FINDING_LABEL}>Owner</span>
+          <input value={finding.owner} onChange={(event) => onChange({ owner: event.target.value })} placeholder="Customer / Unleashed / Third party" className={FINDING_INPUT} />
+        </label>
+        <label className="space-y-1">
+          <span className={FINDING_LABEL}>Target date</span>
+          <input type="date" value={finding.targetDate} onChange={(event) => onChange({ targetDate: event.target.value })} className={FINDING_INPUT} />
+        </label>
+        <label className="space-y-1">
+          <span className={FINDING_LABEL}>Remediation status</span>
+          <select value={finding.status} onChange={(event) => onChange({ status: event.target.value as AiFinding["status"] })} className={FINDING_INPUT}>
+            {AI_REMEDIATION_STATUSES.map((status) => <option key={status}>{status}</option>)}
+          </select>
+        </label>
+        <label className="space-y-1">
+          <span className={FINDING_LABEL}>Retest result</span>
+          <input value={finding.retest} onChange={(event) => onChange({ retest: event.target.value })} className={FINDING_INPUT} />
+        </label>
+      </div>
+    </div>
+  );
+}
+
+function RemediationRoadmap({ findings }: { findings: ReturnType<typeof collectAiFindings> }) {
+  const riskStyle: Record<string, string> = {
+    Critical: "bg-red-600 text-white",
+    High: "bg-orange-500 text-white",
+    Medium: "bg-amber-300 text-amber-950",
+    Low: "bg-sky-200 text-sky-900",
+    Informational: "bg-slate-200 text-slate-700",
+  };
+  return (
+    <section className="overflow-hidden rounded-[26px] bg-white shadow-xl ring-1 ring-[#D9E7F5]">
+      <div className="border-b border-slate-200 bg-[#071A3F] px-6 py-4 text-white">
+        <h3 className="font-black">Prioritised remediation roadmap · Secure → Clean → Govern → Enable → Measure</h3>
+        <p className="mt-1 text-xs font-semibold text-white/70">Built automatically from every control scored below {AI_MINIMUM_READY_SCORE}. {findings.length} finding(s).</p>
+      </div>
+      <div className="grid gap-4 p-5 xl:grid-cols-5">
+        {AI_REMEDIATION_PHASES.map(([phase, description], index) => {
+          const phaseFindings = findings.filter((entry) => entry.phase === phase);
+          return (
+            <div key={phase} className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+              <p className="text-[10px] font-black uppercase tracking-[0.14em] text-[#7E3AED]">Phase {index + 1}</p>
+              <p className="text-lg font-black">{phase} <span className="text-sm text-slate-400">({phaseFindings.length})</span></p>
+              <p className="mt-1 text-xs font-semibold leading-4 text-slate-500">{description}</p>
+              <div className="mt-3 space-y-2">
+                {phaseFindings.length === 0 && <p className="text-xs font-semibold text-slate-400">No findings in this phase.</p>}
+                {phaseFindings.map((entry) => (
+                  <div key={entry.question.id} className="rounded-xl bg-white p-2.5 text-xs shadow-sm ring-1 ring-slate-200">
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="font-black text-[#071A3F]">{entry.question.reference}</span>
+                      <span className={`rounded-full px-2 py-0.5 text-[10px] font-black ${riskStyle[entry.risk]}`}>{entry.risk}</span>
+                    </div>
+                    <p className="mt-1 font-bold leading-4 text-slate-700">{entry.finding.title || entry.question.prompt}</p>
+                    <p className="mt-1 font-semibold text-slate-400">{entry.finding.status}{entry.finding.owner ? ` · ${entry.finding.owner}` : ""}{entry.finding.targetDate ? ` · ${entry.finding.targetDate}` : ""}</p>
+                  </div>
+                ))}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </section>
   );
 }
 

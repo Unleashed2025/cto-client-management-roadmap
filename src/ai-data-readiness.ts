@@ -278,6 +278,91 @@ export const AI_DATA_READINESS_PRE_QUESTIONS: BenchmarkQuestion[] = AI_SECTIONS.
 
 export type AiScoreValue = number | "na" | null | undefined;
 
+export const AI_RISK_LEVELS = ["Critical", "High", "Medium", "Low", "Informational"] as const;
+export const AI_REMEDIATION_STATUSES = ["Not Started", "Planned", "In Progress", "Complete"] as const;
+export type AiRiskLevel = (typeof AI_RISK_LEVELS)[number];
+export type AiRemediationPhase = (typeof AI_REMEDIATION_PHASES)[number][0];
+
+export interface AiFinding {
+  title: string;
+  risk: AiRiskLevel | "";
+  phase: AiRemediationPhase | "";
+  currentSituation: string;
+  impact: string;
+  recommendation: string;
+  action: string;
+  owner: string;
+  targetDate: string;
+  status: (typeof AI_REMEDIATION_STATUSES)[number];
+  retest: string;
+}
+
+export const EMPTY_AI_FINDING: AiFinding = {
+  title: "",
+  risk: "",
+  phase: "",
+  currentSituation: "",
+  impact: "",
+  recommendation: "",
+  action: "",
+  owner: "",
+  targetDate: "",
+  status: "Not Started",
+  retest: "",
+};
+
+const PHASE_BY_PREFIX: Record<string, AiRemediationPhase> = {
+  PERM: "Secure",
+  SENS: "Secure",
+  IAM: "Secure",
+  DATA: "Clean",
+  QUAL: "Clean",
+  LIFE: "Clean",
+  GOV: "Govern",
+  TECH: "Enable",
+  ADOPT: "Measure",
+};
+
+export function defaultPhase(reference: string | undefined): AiRemediationPhase {
+  return PHASE_BY_PREFIX[(reference ?? "").split("-")[0]] ?? "Govern";
+}
+
+export function defaultRisk(score: AiScoreValue): AiRiskLevel {
+  if (score === 0) return "Critical";
+  if (score === 1) return "High";
+  return "Medium";
+}
+
+export interface AiFindingEntry {
+  question: BenchmarkQuestion;
+  score: number;
+  finding: AiFinding;
+  risk: AiRiskLevel;
+  phase: AiRemediationPhase;
+}
+
+// Every control scored below the minimum AI-ready score becomes a finding, ordered by risk then score.
+export function collectAiFindings(
+  questions: BenchmarkQuestion[],
+  responseFor: (questionId: string) => { score?: AiScoreValue; finding?: Partial<AiFinding> } | undefined,
+): AiFindingEntry[] {
+  const entries: AiFindingEntry[] = [];
+  for (const question of questions) {
+    const response = responseFor(question.id);
+    const score = response?.score;
+    if (typeof score !== "number" || score >= AI_MINIMUM_READY_SCORE) continue;
+    const finding = { ...EMPTY_AI_FINDING, ...response?.finding };
+    entries.push({
+      question,
+      score,
+      finding,
+      risk: finding.risk || defaultRisk(score),
+      phase: finding.phase || defaultPhase(question.reference),
+    });
+  }
+  return entries.sort((a, b) => AI_RISK_LEVELS.indexOf(a.risk) - AI_RISK_LEVELS.indexOf(b.risk) || a.score - b.score);
+}
+
 export function aiScoreToAnswer(score: AiScoreValue): "not-assessed" | "pass" | "partial" | "fail" | "not-applicable" {
   if (score === "na") return "not-applicable";
   if (score === null || score === undefined) return "not-assessed";
