@@ -70,10 +70,15 @@ export async function exportBcdrPowerPoint(apps: BcdrApp[], clientName: string) 
   const cover = pptx.addSlide();
   slideNumber += 1;
   cover.background = { color: COLORS.navy };
+  cover.addShape(pptx.ShapeType.ellipse, { x: 11.35, y: -0.65, w: 2.5, h: 2.5, fill: { color: "0A5CAE" }, line: { color: "0A5CAE" } });
+  cover.addShape(pptx.ShapeType.ellipse, { x: -0.62, y: 6.28, w: 2.1, h: 2.1, fill: { color: COLORS.pink }, line: { color: COLORS.pink } });
   addLogo(cover);
+  cover.addShape(pptx.ShapeType.roundRect, { x: 0.65, y: 1.1, w: 3.2, h: 0.42, rectRadius: 0.05, fill: { color: COLORS.cyan }, line: { color: COLORS.cyan } });
+  cover.addText("BACKUP, DR & CONTINUITY", { x: 0.65, y: 1.22, w: 3.2, h: 0.16, bold: true, fontSize: 10, color: COLORS.navy, align: "center", margin: 0 });
   cover.addText(title, { x: 0.65, y: 2.05, w: 10.8, h: 0.75, bold: true, fontSize: 30, color: COLORS.white, margin: 0 });
   cover.addText(clientName, { x: 0.65, y: 3.08, w: 10.7, h: 0.4, fontSize: 20, bold: true, color: COLORS.white, margin: 0 });
   cover.addText(`Service catalogue · ${apps.length} application(s) · Generated ${new Date().toLocaleDateString("en-GB")}`, { x: 0.65, y: 3.65, w: 10.5, h: 0.25, fontSize: 11, color: "D8F3FF", margin: 0 });
+  cover.addText("Indicative assessment based on information supplied by the client.", { x: 0.65, y: 6.9, w: 8.5, h: 0.22, fontSize: 10, color: COLORS.cyan, margin: 0 });
 
   const calcs = apps.map(calcApp);
   const summary = pptx.addSlide();
