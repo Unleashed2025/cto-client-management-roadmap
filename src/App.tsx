@@ -273,7 +273,7 @@ function ComplianceAssessment({
       <div className="rounded-[26px] bg-white p-6 shadow-xl ring-1 ring-[#D9E7F5]">
         <div className="flex flex-col gap-5 xl:flex-row xl:items-start xl:justify-between">
           <div>
-            <button onClick={onBack} className="text-xs font-black uppercase tracking-[0.16em] text-[#7E3AED]">← Services Hub</button>
+            <button onClick={onBack} className="rounded-xl bg-[#EBF8FF] px-4 py-2.5 text-xs font-black uppercase tracking-[0.12em] text-[#071A3F] ring-1 ring-[#00D4FF]/40 hover:bg-[#00D4FF]/15">← Back to homepage</button>
             <h2 className="mt-2 text-3xl font-black tracking-[-0.04em]">{benchmark.title}</h2>
             <p className="mt-2 max-w-4xl text-sm font-semibold leading-6 text-slate-600">{benchmark.description}</p>
           </div>
@@ -711,8 +711,8 @@ export function AuditBuilder() {
           </div>
           <div className="flex flex-wrap items-center gap-2">
             {!showHub && (
-              <button onClick={() => setShowHub(true)} className="inline-flex items-center gap-2 rounded-xl bg-white/10 px-4 py-2.5 text-sm font-black hover:bg-white/15">
-                <Home className="size-4" /> Services Hub
+              <button onClick={() => setShowHub(true)} className="inline-flex items-center gap-2 rounded-xl bg-[#00D4FF] px-4 py-2.5 text-sm font-black text-[#071A3F] shadow-lg shadow-[#00D4FF]/15 hover:bg-[#5BE5FF]">
+                <Home className="size-4" /> Back to homepage
               </button>
             )}
             {audit && !showHub && (
