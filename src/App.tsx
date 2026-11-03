@@ -1,491 +1,627 @@
-"use client";
-
 import * as React from "react";
-import { Download, FileSpreadsheet, Plus, RefreshCcw, ShieldCheck, Trash2 } from "lucide-react";
+import {
+  AlertTriangle,
+  CheckCircle2,
+  ChevronRight,
+  Clock3,
+  Download,
+  FileSpreadsheet,
+  LayoutDashboard,
+  Plus,
+  RefreshCcw,
+  ShieldCheck,
+  Trash2,
+  Upload,
+  Users,
+  X,
+} from "lucide-react";
+import {
+  ASSET_CATEGORIES,
+  ASSET_CATEGORY_SLUGS,
+  assessRows,
+  categoryGroups,
+  createEmptyRow,
+  migrationPlatform,
+  parseAuditWorkbook,
+  type AssetCategorySlug,
+  type AssetFieldConfig,
+  type AuditContact,
+  type AuditRow,
+  type BrowserAudit,
+  type HighLevelInfo,
+} from "./audit-model";
+import { exportFullAuditReport } from "./full-audit-report";
 
-type AuditCategory = "data-infra" | "network" | "client-compute" | "software" | "cyber" | "other";
+type ViewKey = "overview" | "high-level" | AssetCategorySlug;
+type MigrationFilter = "all" | "Microsoft" | "Google" | "Other";
 
-type AuditRow = {
-  id: string;
-  category: AuditCategory;
-  subcategory: string;
-  name: string;
-  supplier: string;
-  status: string;
-  notes: string;
-  flagged: boolean;
-};
+const INITIAL_VISIBLE_ROWS = 200;
 
-const CATEGORY_LABEL: Record<AuditCategory, string> = {
-  "data-infra": "Data Infrastructure",
-  network: "Network Infrastructure",
-  "client-compute": "Client Compute",
-  software: "Software",
-  cyber: "Cyber Controls",
-  other: "Other",
-};
+const HIGH_LEVEL_FIELDS: Array<{ key: keyof Omit<HighLevelInfo, "contacts">; label: string; type?: string }> = [
+  { key: "schoolTrustName", label: "School / Trust Name" },
+  { key: "siteName", label: "Site Name" },
+  { key: "addressLine1", label: "Address Line 1" },
+  { key: "addressLine2", label: "Address Line 2" },
+  { key: "townCity", label: "Town / City" },
+  { key: "county", label: "County" },
+  { key: "postcode", label: "Postcode" },
+  { key: "auditDate", label: "Audit Date", type: "date" },
+  { key: "auditor", label: "Auditor" },
+  { key: "staffCount", label: "Number of Staff", type: "number" },
+  { key: "studentCount", label: "Number of Students", type: "number" },
+  { key: "deviceCount", label: "Number of Devices", type: "number" },
+];
 
-const BRAND = {
-  navy: [7, 26, 63] as [number, number, number],
-  cyan: [0, 212, 255] as [number, number, number],
-  purple: [126, 58, 237] as [number, number, number],
-  pink: [255, 42, 160] as [number, number, number],
-  orange: [248, 140, 34] as [number, number, number],
-  bg: [235, 248, 255] as [number, number, number],
-  white: [255, 255, 255] as [number, number, number],
-  slate: [82, 97, 115] as [number, number, number],
-  line: [217, 231, 245] as [number, number, number],
-};
-
-function normalise(value: unknown) {
-  return String(value ?? "").trim();
+function rowTitle(row: AuditRow): string {
+  return String(row[ASSET_CATEGORIES[row.auditCategory].titleField] ?? "Untitled item");
 }
 
-function slugText(value: unknown) {
-  return normalise(value).toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
-}
+function FieldEditor({
+  field,
+  value,
+  onChange,
+  compact = false,
+}: {
+  field: AssetFieldConfig;
+  value: unknown;
+  onChange: (value: unknown) => void;
+  compact?: boolean;
+}) {
+  const className = compact
+    ? "min-w-32 rounded-lg border border-slate-200 bg-white px-2 py-1.5 text-xs outline-none focus:border-[#7E3AED] focus:ring-2 focus:ring-[#7E3AED]/10"
+    : "w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm outline-none focus:border-[#7E3AED] focus:ring-2 focus:ring-[#7E3AED]/10";
 
-function inferCategory(sheetName: string, headers: string[]): AuditCategory {
-  const text = slugText([sheetName, ...headers].join(" "));
-  if (/(server|san|data infra|infrastructure|virtual machine|vmware|hyper v)/.test(text)) return "data-infra";
-  if (/(network|switch|firewall|wifi|wi fi|wireless|access point|ap)/.test(text)) return "network";
-  if (/(client compute|laptop|desktop|tablet|ipad|chromebook|device category)/.test(text)) return "client-compute";
-  if (/(software|system|application|licen[cs]e)/.test(text)) return "software";
-  if (/(cyber|mfa|backup|control|security|installed)/.test(text)) return "cyber";
-  return "other";
-}
-
-function inferSubcategory(category: AuditCategory, rowText: string) {
-  const text = slugText(rowText);
-  if (category === "data-infra") {
-    if (/san switch|fibre channel|fiber channel|brocade/.test(text)) return "SAN switches";
-    if (/san|storage|powerstore|powervault|unity|nimble|msa/.test(text)) return "SAN storage";
-    if (/virtual|vmware|hyper v|\bvm\b/.test(text)) return "VMs / virtual machines";
-    return "Physical servers";
+  if (field.type === "select") {
+    return (
+      <select value={String(value ?? "")} onChange={(event) => onChange(event.target.value)} className={className}>
+        <option value="">Select...</option>
+        {field.options?.map((option) => (
+          <option key={option.value} value={option.value}>{option.label}</option>
+        ))}
+      </select>
+    );
   }
-  if (category === "network") {
-    if (/core/.test(text) && /switch/.test(text)) return "Core switches";
-    if (/edge/.test(text) && /switch/.test(text)) return "Edge switches";
-    if (/firewall|fortigate|sonicwall|watchguard|palo alto/.test(text)) return "Firewalls";
-    if (/wifi|wi fi|wireless|access point|\bap\b|unifi|ruckus|aruba/.test(text)) return "Wi-Fi access points";
-    return "Other network";
+  if (field.type === "boolean") {
+    const selected = value === true ? "true" : value === false ? "false" : "partial";
+    return (
+      <select
+        value={selected}
+        onChange={(event) => onChange(event.target.value === "true" ? true : event.target.value === "false" ? false : null)}
+        className={className}
+      >
+        <option value="true">Yes</option>
+        <option value="false">No</option>
+        <option value="partial">Partial / Unknown</option>
+      </select>
+    );
   }
-  if (category === "client-compute") {
-    if (/managed/.test(text) && /laptop/.test(text)) return "Managed laptops";
-    if (/laptop|notebook/.test(text)) return "Laptops";
-    if (/desktop|\bpc\b/.test(text)) return "Desktops";
-    if (/ipad/.test(text)) return "iPads";
-    if (/tablet/.test(text)) return "Tablets";
-    if (/chromebook/.test(text)) return "Chromebooks";
-    if (/unmanaged/.test(text)) return "Unmanaged";
-    return "Other";
+  if (field.type === "textarea") {
+    return (
+      <textarea
+        value={String(value ?? "")}
+        onChange={(event) => onChange(event.target.value)}
+        rows={compact ? 2 : 3}
+        className={`${className} min-w-48 resize-y`}
+      />
+    );
   }
-  return "";
+  const dateIsIso = field.type !== "date" || !value || /^\d{4}-\d{2}-\d{2}$/.test(String(value));
+  return (
+    <input
+      type={field.type === "number" ? "number" : field.type === "date" && dateIsIso ? "date" : "text"}
+      value={String(value ?? "")}
+      onChange={(event) => onChange(field.type === "number" ? (event.target.value === "" ? "" : Number(event.target.value)) : event.target.value)}
+      className={className}
+    />
+  );
 }
 
-function looksFlagged(rowText: string) {
-  const text = slugText(rowText);
-  return /(flag|expired|end of life|eol|eosl|out of support|unsupported|unknown|partial|not installed|\bno\b|critical|high|fail|missing|risk)/.test(text);
+function AddItemModal({
+  category,
+  onClose,
+  onSave,
+}: {
+  category: AssetCategorySlug;
+  onClose: () => void;
+  onSave: (values: Record<string, unknown>) => void;
+}) {
+  const config = ASSET_CATEGORIES[category];
+  const [values, setValues] = React.useState<Record<string, unknown>>({});
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-[#071A3F]/70 p-4 backdrop-blur-sm" role="dialog" aria-modal="true">
+      <div className="max-h-[90vh] w-full max-w-3xl overflow-hidden rounded-[26px] bg-white shadow-2xl">
+        <div className="flex items-center justify-between border-b border-slate-200 px-6 py-5">
+          <div>
+            <p className="text-xs font-black uppercase tracking-[0.2em] text-[#7E3AED]">Asset workspace</p>
+            <h2 className="mt-1 text-2xl font-black">Add {config.label} Item</h2>
+          </div>
+          <button onClick={onClose} className="rounded-xl p-2 text-slate-500 hover:bg-slate-100" aria-label="Close">
+            <X className="size-5" />
+          </button>
+        </div>
+        <div className="grid max-h-[68vh] gap-4 overflow-y-auto p-6 md:grid-cols-2">
+          {config.fields.map((field) => (
+            <label key={field.key} className={field.type === "textarea" ? "space-y-1.5 md:col-span-2" : "space-y-1.5"}>
+              <span className="text-xs font-bold text-slate-600">
+                {field.label}{field.required && <span className="text-[#FF2AA0]"> *</span>}
+              </span>
+              <FieldEditor field={field} value={values[field.key]} onChange={(value) => setValues((current) => ({ ...current, [field.key]: value }))} />
+            </label>
+          ))}
+        </div>
+        <div className="flex justify-end gap-3 border-t border-slate-200 px-6 py-4">
+          <button onClick={onClose} className="rounded-xl border border-slate-200 px-5 py-2.5 text-sm font-bold text-slate-700">Cancel</button>
+          <button
+            onClick={() => {
+              onSave(values);
+              onClose();
+            }}
+            className="rounded-xl bg-[#7E3AED] px-5 py-2.5 text-sm font-black text-white"
+          >
+            Add item
+          </button>
+        </div>
+      </div>
+    </div>
+  );
 }
 
-function pickField(record: Record<string, unknown>, patterns: RegExp[]) {
-  const entry = Object.entries(record).find(([key]) => patterns.some((pattern) => pattern.test(slugText(key))));
-  return normalise(entry?.[1]);
+function RiskBadge({ row }: { row: AuditRow }) {
+  if (row.flagged) {
+    return (
+      <div className="flex min-w-64 items-start gap-2 text-xs text-red-700">
+        <AlertTriangle className="mt-0.5 size-4 shrink-0" />
+        <span>{row.flagReasons.join("; ")}</span>
+      </div>
+    );
+  }
+  if (row.warnReasons.length > 0) {
+    return (
+      <div className="flex min-w-64 items-start gap-2 text-xs text-amber-700">
+        <Clock3 className="mt-0.5 size-4 shrink-0" />
+        <span>{row.warnReasons.join("; ")}</span>
+      </div>
+    );
+  }
+  return (
+    <div className="flex min-w-44 items-center gap-2 text-xs text-emerald-700">
+      <CheckCircle2 className="size-4" /> No critical flag
+    </div>
+  );
 }
 
-function buildRowsFromRecords(sheetName: string, records: Record<string, unknown>[]) {
-  if (records.length === 0) return [];
-  const headers = Object.keys(records[0] ?? {});
-  const category = inferCategory(sheetName, headers);
-
-  return records
-    .map((record, index): AuditRow | null => {
-      const rowText = Object.values(record).map(normalise).filter(Boolean).join(" ");
-      if (!rowText || rowText.length < 3) return null;
-      const name =
-        pickField(record, [/name|device|asset|server|control|software|system|application|category|area/]) ||
-        normalise(Object.values(record).find(Boolean)) ||
-        `${sheetName} row ${index + 1}`;
-      const supplier = pickField(record, [/supplier|vendor|manufacturer|make|model|solution|coverage/]);
-      const status = pickField(record, [/status|installed|risk|priority|support|warranty|lifecycle|score/]);
-      const notes = pickField(record, [/note|comment|finding|reason|remediation|action|evidence/]);
-      return {
-        id: crypto.randomUUID(),
-        category,
-        subcategory: inferSubcategory(category, `${name} ${supplier} ${status} ${notes} ${rowText}`),
-        name,
-        supplier,
-        status,
-        notes,
-        flagged: looksFlagged(`${status} ${notes} ${rowText}`),
-      };
-    })
-    .filter((row): row is AuditRow => row != null);
-}
-
-function emptyRow(): AuditRow {
-  return {
-    id: crypto.randomUUID(),
-    category: "data-infra",
-    subcategory: "Physical servers",
-    name: "",
-    supplier: "",
-    status: "",
-    notes: "",
-    flagged: false,
-  };
+function EmptyUpload({ onFile }: { onFile: (file: File | null) => void }) {
+  return (
+    <section className="mx-auto mt-10 max-w-4xl rounded-[30px] border-2 border-dashed border-[#7E3AED]/40 bg-white p-12 text-center shadow-xl">
+      <div className="mx-auto grid size-20 place-items-center rounded-[24px] bg-[#EBF8FF] text-[#7E3AED]">
+        <FileSpreadsheet className="size-10" />
+      </div>
+      <h2 className="mt-6 text-3xl font-black tracking-[-0.04em]">Upload the client audit workbook</h2>
+      <p className="mx-auto mt-3 max-w-2xl text-sm font-semibold leading-6 text-slate-600">
+        The workbook is mapped into the same High Level Info, Data Infrastructure, Network & WiFi, Client Compute, Software, Cyber Security and Migration Readiness workspaces used by the Lifecycle app.
+      </p>
+      <label className="mt-8 inline-flex cursor-pointer items-center gap-2 rounded-2xl bg-[#7E3AED] px-6 py-3.5 text-sm font-black text-white shadow-lg shadow-[#7E3AED]/20">
+        <Upload className="size-4" /> Choose workbook
+        <input
+          type="file"
+          className="sr-only"
+          accept=".xlsx,.xls,.xlsm,.xlsb,.csv,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+          onChange={(event) => onFile(event.target.files?.[0] ?? null)}
+        />
+      </label>
+      <div className="mt-8 flex items-center justify-center gap-2 text-xs font-bold text-slate-500">
+        <ShieldCheck className="size-4 text-[#00D4FF]" />
+        Parsed locally in this browser. Nothing is written to the Lifecycle app.
+      </div>
+    </section>
+  );
 }
 
 export function AuditBuilder() {
+  const [audit, setAudit] = React.useState<BrowserAudit | null>(null);
   const [clientName, setClientName] = React.useState("Temporary audit");
-  const [rows, setRows] = React.useState<AuditRow[]>([]);
-  const [categoryFilter, setCategoryFilter] = React.useState<AuditCategory | "all">("all");
-  const [status, setStatus] = React.useState("No data is stored. This temporary audit resets when the page is closed or refreshed.");
+  const [activeView, setActiveView] = React.useState<ViewKey>("overview");
+  const [status, setStatus] = React.useState("Upload a workbook to create the browser-only audit workspace.");
+  const [migrationFilter, setMigrationFilter] = React.useState<MigrationFilter>("all");
+  const [visibleLimit, setVisibleLimit] = React.useState(INITIAL_VISIBLE_ROWS);
+  const [addCategory, setAddCategory] = React.useState<AssetCategorySlug | null>(null);
+  const [reporting, setReporting] = React.useState(false);
   const fileInputRef = React.useRef<HTMLInputElement>(null);
 
-  const visibleRows = categoryFilter === "all" ? rows : rows.filter((row) => row.category === categoryFilter);
-  const flaggedRows = rows.filter((row) => row.flagged);
-  const categories = (Object.keys(CATEGORY_LABEL) as AuditCategory[]).filter((category) => rows.some((row) => row.category === category));
+  const rows = audit?.rows ?? [];
+  const activeCategory = ASSET_CATEGORY_SLUGS.includes(activeView as AssetCategorySlug) ? activeView as AssetCategorySlug : null;
+  const activeRows = activeCategory ? rows.filter((row) => row.auditCategory === activeCategory) : [];
+  const filteredRows = activeCategory === "migration" && migrationFilter !== "all"
+    ? activeRows.filter((row) => migrationPlatform(row) === migrationFilter)
+    : activeRows;
+  const displayedRows = filteredRows.slice(0, visibleLimit);
+  const groups = activeCategory ? categoryGroups(activeCategory, displayedRows) : [];
+
+  function navigate(view: ViewKey) {
+    setActiveView(view);
+    setVisibleLimit(INITIAL_VISIBLE_ROWS);
+  }
 
   async function handleUpload(file: File | null) {
     if (!file) return;
     if (!/\.(xlsx|xls|xlsm|xlsb|csv)$/i.test(file.name)) {
       setStatus("Choose an Excel workbook or CSV file (.xlsx, .xls, .xlsm, .xlsb, or .csv).");
-      if (fileInputRef.current) fileInputRef.current.value = "";
       return;
     }
-
-    setStatus("Reading spreadsheet in this browser session...");
+    setStatus("Mapping workbook sections into the Lifecycle audit structure...");
     try {
-      const XLSX = await import("xlsx");
-      const workbook = XLSX.read(await file.arrayBuffer(), { type: "array", cellDates: true });
-      let populatedSheets = 0;
-      const parsedRows = workbook.SheetNames.flatMap((sheetName) => {
-        const sheet = workbook.Sheets[sheetName];
-        const records = XLSX.utils.sheet_to_json<Record<string, unknown>>(sheet, { defval: "", raw: false });
-        const sheetRows = buildRowsFromRecords(sheetName, records);
-        if (sheetRows.length > 0) populatedSheets += 1;
-        return sheetRows;
-      });
-      setRows(parsedRows);
-      setClientName(file.name.replace(/\.(xlsx|xls|xlsm|xlsb|csv)$/i, "") || "Temporary audit");
-      setStatus(
-        `Loaded ${parsedRows.length.toLocaleString("en-GB")} line item(s) from ${populatedSheets.toLocaleString("en-GB")} populated sheet(s) locally. Nothing was saved to the core app.`,
-      );
+      const parsed = await parseAuditWorkbook(await file.arrayBuffer());
+      const importedSheets = new Set(parsed.sheets.filter((sheet) => sheet.rowsImported > 0).map((sheet) => sheet.sheetName));
+      setAudit(parsed);
+      setClientName(parsed.highLevel.schoolTrustName || parsed.highLevel.siteName || file.name.replace(/\.(xlsx|xls|xlsm|xlsb|csv)$/i, ""));
+      navigate("overview");
+      setStatus(`Loaded ${parsed.rows.length.toLocaleString("en-GB")} category-specific record(s) across ${importedSheets.size} audit sheet(s), plus High Level Info.`);
     } catch (error) {
       console.error("Unable to read audit workbook", error);
-      setRows([]);
-      setStatus("This spreadsheet could not be read. Check that the file is a valid Excel workbook or CSV and try again.");
-      if (fileInputRef.current) fileInputRef.current.value = "";
+      setStatus("This spreadsheet could not be mapped. Check that it is a valid audit workbook or CSV and try again.");
     }
   }
 
-  function updateRow(id: string, patch: Partial<AuditRow>) {
-    setRows((current) => current.map((row) => (row.id === id ? { ...row, ...patch } : row)));
+  function updateRow(rowId: string, field: string, value: unknown) {
+    setAudit((current) => current ? {
+      ...current,
+      rows: assessRows(current.rows.map((row) => row.id === rowId ? { ...row, [field]: value } : row)),
+    } : current);
   }
 
-  function resetBuilder() {
-    setRows([]);
+  function addRow(category: AssetCategorySlug, values: Record<string, unknown>) {
+    const row = { ...createEmptyRow(category), ...values };
+    setAudit((current) => current ? { ...current, rows: assessRows([...current.rows, row]) } : current);
+  }
+
+  function deleteRow(rowId: string) {
+    if (!window.confirm("Delete this item from the temporary audit?")) return;
+    setAudit((current) => current ? { ...current, rows: assessRows(current.rows.filter((row) => row.id !== rowId)) } : current);
+  }
+
+  function updateHighLevel(key: keyof Omit<HighLevelInfo, "contacts">, value: string) {
+    setAudit((current) => current ? { ...current, highLevel: { ...current.highLevel, [key]: value } } : current);
+  }
+
+  function updateContact(contactId: string, patch: Partial<AuditContact>) {
+    setAudit((current) => current ? {
+      ...current,
+      highLevel: {
+        ...current.highLevel,
+        contacts: current.highLevel.contacts.map((contact) => contact.id === contactId ? { ...contact, ...patch } : contact),
+      },
+    } : current);
+  }
+
+  function addContact() {
+    setAudit((current) => current ? {
+      ...current,
+      highLevel: {
+        ...current.highLevel,
+        contacts: [...current.highLevel.contacts, { id: crypto.randomUUID(), role: "", name: "", email: "", phone: "", notes: "" }],
+      },
+    } : current);
+  }
+
+  function reset() {
+    setAudit(null);
     setClientName("Temporary audit");
-    setCategoryFilter("all");
-    if (fileInputRef.current) fileInputRef.current.value = "";
+    navigate("overview");
     setStatus("Reset complete. No temporary audit data remains on this page.");
+    if (fileInputRef.current) fileInputRef.current.value = "";
   }
 
   async function exportReport() {
-    const [{ default: jsPDF }, autoTableModule] = await Promise.all([import("jspdf"), import("jspdf-autotable")]);
-    const autoTable = autoTableModule.default;
-    const doc = new jsPDF({ unit: "pt", format: "a4", orientation: "landscape" });
-    const pageWidth = doc.internal.pageSize.getWidth();
-    const pageHeight = doc.internal.pageSize.getHeight();
-    const margin = 40;
-    let logoDataUrl: string | null = null;
+    if (!audit) return;
+    setReporting(true);
     try {
-      const logo = await fetch(`${import.meta.env.BASE_URL}unleashed-logo-white.png`);
-      const blob = await logo.blob();
-      logoDataUrl = await new Promise<string>((resolve, reject) => {
-        const reader = new FileReader();
-        reader.onload = () => resolve(reader.result as string);
-        reader.onerror = reject;
-        reader.readAsDataURL(blob);
-      });
-    } catch {
-      logoDataUrl = null;
+      await exportFullAuditReport(audit, clientName);
+    } catch (error) {
+      console.error("Unable to generate full audit report", error);
+      setStatus("The report could not be generated. Review the browser console for details and try again.");
+    } finally {
+      setReporting(false);
     }
-
-    const drawLogo = (x: number, y: number, w: number) => {
-      if (!logoDataUrl) return;
-      doc.addImage(logoDataUrl, "PNG", x, y, w, w * (397 / 1822));
-    };
-    const drawHeader = (page: number, title: string) => {
-      doc.setFillColor(...BRAND.bg);
-      doc.rect(0, 0, pageWidth, pageHeight, "F");
-      const x = 18;
-      const y = 14;
-      const w = pageWidth - 36;
-      const h = 58;
-      doc.setFillColor(...BRAND.navy);
-      doc.roundedRect(x, y, w, h, 7, 7, "F");
-      doc.setFillColor(...BRAND.cyan);
-      doc.rect(x + 16, y + 15, 50, 28, "F");
-      doc.setTextColor(...BRAND.navy);
-      doc.setFont("helvetica", "bold");
-      doc.setFontSize(8);
-      doc.text(String(page).padStart(2, "0"), x + 41, y + 33, { align: "center" });
-      doc.setTextColor(...BRAND.white);
-      doc.setFontSize(19);
-      doc.text(title, x + 78, y + 31, { maxWidth: w - 365 });
-      drawLogo(x + w - 210, y + 12, 180);
-      const stripeW = w / 3;
-      doc.setFillColor(...BRAND.cyan);
-      doc.rect(x, y + h, stripeW, 4, "F");
-      doc.setFillColor(...BRAND.purple);
-      doc.rect(x + stripeW, y + h, stripeW, 4, "F");
-      doc.setFillColor(...BRAND.pink);
-      doc.rect(x + stripeW * 2, y + h, w - stripeW * 2, 4, "F");
-    };
-
-    doc.setFillColor(...BRAND.navy);
-    doc.rect(0, 0, pageWidth, pageHeight, "F");
-    doc.setFillColor(10, 92, 174);
-    doc.ellipse(pageWidth - 105, -12, 118, 118, "F");
-    doc.setFillColor(...BRAND.pink);
-    doc.ellipse(55, pageHeight + 6, 96, 96, "F");
-    drawLogo(pageWidth - 300, 58, 240);
-    doc.setFillColor(...BRAND.cyan);
-    doc.roundedRect(margin, 92, 124, 28, 5, 5, "F");
-    doc.setTextColor(...BRAND.navy);
-    doc.setFont("helvetica", "bold");
-    doc.setFontSize(8);
-    doc.text("AUDIT BUILDER", margin + 62, 110, { align: "center" });
-    doc.setTextColor(...BRAND.white);
-    doc.setFontSize(32);
-    doc.text("Temporary audit report", margin, 200);
-    doc.setFontSize(16);
-    doc.text(clientName, margin, 245, { maxWidth: pageWidth - margin * 2 });
-    doc.setFontSize(10);
-    doc.setTextColor(216, 243, 255);
-    doc.text(`Generated ${new Date().toLocaleDateString("en-GB")}`, margin, 280);
-    doc.setTextColor(...BRAND.cyan);
-    doc.text("No audit data was saved to the Lifecycle app.", margin, pageHeight - 40);
-
-    let page = 1;
-    for (const category of categories) {
-      const categoryRows = rows.filter((row) => row.category === category);
-      const categoryFlagged = categoryRows.filter((row) => row.flagged);
-      page += 1;
-      doc.addPage();
-      drawHeader(page, `${CATEGORY_LABEL[category]} — highlights`);
-      const y = 110;
-      const tileGap = 18;
-      const tileW = (pageWidth - margin * 2 - tileGap * 3) / 4;
-      [
-        { label: "Items audited", value: categoryRows.length, c: BRAND.navy },
-        { label: "Flagged", value: categoryFlagged.length, c: BRAND.pink },
-        { label: "Healthy", value: categoryRows.length - categoryFlagged.length, c: BRAND.purple },
-        { label: "Flag rate", value: categoryRows.length ? `${Math.round((categoryFlagged.length / categoryRows.length) * 100)}%` : "0%", c: BRAND.orange },
-      ].forEach((tile, index) => {
-        const x = margin + index * (tileW + tileGap);
-        doc.setFillColor(...tile.c);
-        doc.roundedRect(x, y, tileW, 72, 12, 12, "F");
-        doc.setTextColor(...BRAND.white);
-        doc.setFont("helvetica", "bold");
-        doc.setFontSize(20);
-        doc.text(String(tile.value), x + 14, y + 32);
-        doc.setFontSize(7);
-        doc.text(tile.label.toUpperCase(), x + 14, y + 58);
-      });
-
-      page += 1;
-      doc.addPage();
-      drawHeader(page, `${CATEGORY_LABEL[category]} — inventory`);
-      autoTable(doc, {
-        startY: 112,
-        head: [["Subcategory", "Item", "Supplier / Model", "Status", "Flagged", "Notes"]],
-        body: categoryRows.map((row) => [
-          row.subcategory || "—",
-          row.name,
-          row.supplier || "Not recorded",
-          row.status || "Review",
-          row.flagged ? "Yes" : "No",
-          row.notes || "—",
-        ]),
-        theme: "grid",
-        headStyles: { fillColor: BRAND.navy, textColor: 255, fontSize: 8 },
-        bodyStyles: { fontSize: 7, cellPadding: 3, valign: "top" },
-        margin: { left: margin, right: margin, top: 50 },
-        columnStyles: {
-          0: { cellWidth: 90 },
-          1: { cellWidth: 145 },
-          2: { cellWidth: 125 },
-          3: { cellWidth: 70 },
-          4: { cellWidth: 50 },
-          5: { cellWidth: pageWidth - margin * 2 - 90 - 145 - 125 - 70 - 50 },
-        },
-      });
-
-      page += 1;
-      doc.addPage();
-      drawHeader(page, `${CATEGORY_LABEL[category]} — strategy`);
-      const cardW = (pageWidth - margin * 2 - 24) / 2;
-      const drawCard = (x: number, yPos: number, w: number, h: number, title: string, text: string, fill: [number, number, number], dark = false) => {
-        doc.setFillColor(...fill);
-        doc.roundedRect(x, yPos, w, h, 16, 16, "F");
-        doc.setTextColor(...(dark ? BRAND.white : BRAND.navy));
-        doc.setFont("helvetica", "bold");
-        doc.setFontSize(12);
-        doc.text(title, x + 22, yPos + 32);
-        doc.setFont("helvetica", "normal");
-        doc.setFontSize(8);
-        doc.text(doc.splitTextToSize(text, w - 44), x + 22, yPos + 58);
-      };
-      drawCard(margin, 112, cardW, 135, "What this means", `${categoryFlagged.length} of ${categoryRows.length} audited item(s) need attention or review. Use the inventory extract to validate ownership, lifecycle, supplier and remediation detail.`, BRAND.white);
-      drawCard(margin + cardW + 24, 112, cardW, 135, "What if we do nothing", "Risk, supportability and cost exposure remain unmanaged. Unsupported or incomplete items should be reviewed before they become operational incidents or project blockers.", [10, 92, 174], true);
-      const roadmapW = (pageWidth - margin * 2 - 44) / 3;
-      [
-        ["3 months", "Validate the flagged items, confirm ownership, and agree quick wins."],
-        ["12 months", "Convert priority remediation into budgeted projects and refresh cycles."],
-        ["2 years", "Move to a repeatable lifecycle review and annual audit cadence."],
-      ].forEach(([title, text], index) => {
-        drawCard(margin + index * (roadmapW + 22), 282, roadmapW, 145, title, text, BRAND.white);
-      });
-    }
-
-    doc.save(`${clientName.toLowerCase().replace(/[^a-z0-9]+/g, "-") || "audit"}-temporary-audit-report.pdf`);
   }
 
+  const summary = ASSET_CATEGORY_SLUGS.map((slug) => {
+    const categoryRows = rows.filter((row) => row.auditCategory === slug);
+    return {
+      slug,
+      total: categoryRows.length,
+      flagged: categoryRows.filter((row) => row.flagged).length,
+      warnings: categoryRows.filter((row) => !row.flagged && row.warnReasons.length > 0).length,
+    };
+  });
+  const totalFlagged = rows.filter((row) => row.flagged).length;
+
   return (
-    <main className="min-h-screen bg-[#EBF8FF] px-6 py-8 text-slate-950">
-      <div className="mx-auto max-w-7xl space-y-6">
-        <section className="rounded-[28px] bg-[#071A3F] p-8 text-white shadow-2xl">
-          <div className="flex flex-col gap-6 lg:flex-row lg:items-center lg:justify-between">
+    <main className="min-h-screen bg-[#EBF8FF] text-slate-950">
+      <header className="bg-[#071A3F] text-white shadow-xl">
+        <div className="mx-auto flex max-w-[1800px] flex-col gap-5 px-5 py-5 lg:flex-row lg:items-center lg:justify-between">
+          <div className="flex items-center gap-5">
+            <img src={`${import.meta.env.BASE_URL}unleashed-logo-white.png`} alt="Unleashed" className="h-auto w-44" />
+            <div className="hidden h-10 w-px bg-white/20 sm:block" />
             <div>
-              <p className="text-xs font-black uppercase tracking-[0.35em] text-[#00D4FF]">Temporary audit link</p>
-              <h1 className="mt-3 text-4xl font-black tracking-[-0.06em] md:text-6xl">Audit Builder</h1>
-              <p className="mt-4 max-w-3xl text-sm font-semibold text-blue-100">
-                Upload, edit, add line items, and generate a branded audit report without saving anything to the core Lifecycle app.
-              </p>
+              <p className="text-[10px] font-black uppercase tracking-[0.28em] text-[#00D4FF]">Browser-only Lifecycle workspace</p>
+              <h1 className="mt-1 text-2xl font-black tracking-[-0.04em]">Client Audit Asset Management</h1>
             </div>
-            <img src={`${import.meta.env.BASE_URL}unleashed-logo-white.png`} alt="Unleashed" className="h-auto w-64 max-w-full object-contain" />
           </div>
-          <div className="mt-8 grid h-2 grid-cols-3 overflow-hidden rounded-full">
-            <div className="bg-[#00D4FF]" />
-            <div className="bg-[#7E3AED]" />
-            <div className="bg-[#FF28A0]" />
+          <div className="flex flex-wrap items-center gap-2">
+            {audit && (
+              <>
+                <label className="rounded-xl bg-white/10 px-3 py-2">
+                  <span className="sr-only">Audit name</span>
+                  <input value={clientName} onChange={(event) => setClientName(event.target.value)} className="w-56 bg-transparent text-sm font-bold text-white outline-none placeholder:text-white/50" />
+                </label>
+                <label className="inline-flex cursor-pointer items-center gap-2 rounded-xl bg-white/10 px-4 py-2.5 text-sm font-bold hover:bg-white/15">
+                  <Upload className="size-4" /> Replace workbook
+                  <input
+                    ref={fileInputRef}
+                    type="file"
+                    className="sr-only"
+                    accept=".xlsx,.xls,.xlsm,.xlsb,.csv,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                    onChange={(event) => void handleUpload(event.target.files?.[0] ?? null)}
+                  />
+                </label>
+                <button onClick={() => void exportReport()} disabled={reporting} className="inline-flex items-center gap-2 rounded-xl bg-[#FF2AA0] px-4 py-2.5 text-sm font-black disabled:opacity-50">
+                  <Download className="size-4" /> {reporting ? "Generating..." : "Full audit report"}
+                </button>
+                <button onClick={reset} className="rounded-xl p-2.5 text-white/70 hover:bg-white/10 hover:text-white" aria-label="Reset">
+                  <RefreshCcw className="size-4" />
+                </button>
+              </>
+            )}
           </div>
-        </section>
+        </div>
+        <div className="grid h-1.5 grid-cols-3">
+          <div className="bg-[#00D4FF]" /><div className="bg-[#7E3AED]" /><div className="bg-[#FF2AA0]" />
+        </div>
+      </header>
 
-        <section className="grid gap-4 rounded-[28px] bg-white/90 p-5 shadow-xl ring-1 ring-[#D9E7F5] lg:grid-cols-[1.2fr_1fr_auto_auto] lg:items-end">
-          <label className="space-y-2">
-            <span className="text-xs font-black uppercase tracking-[0.2em] text-slate-600">Audit / client name</span>
-            <input value={clientName} onChange={(event) => setClientName(event.target.value)} className="w-full rounded-2xl border border-[#D9E7F5] px-4 py-3 font-bold outline-none focus:border-[#00D4FF]" />
-          </label>
-          <label className="space-y-2">
-            <span className="text-xs font-black uppercase tracking-[0.2em] text-slate-600">Upload spreadsheet</span>
-            <input ref={fileInputRef} type="file" accept=".xlsx,.xls,.xlsm,.xlsb,.csv,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" onChange={(event) => void handleUpload(event.target.files?.[0] ?? null)} className="w-full rounded-2xl border border-dashed border-[#7E3AED] bg-[#EBF8FF] px-4 py-3 text-sm font-bold" />
-          </label>
-          <button onClick={() => setRows((current) => [emptyRow(), ...current])} className="inline-flex items-center justify-center gap-2 rounded-2xl bg-[#7E3AED] px-5 py-3 text-sm font-black text-white">
-            <Plus className="size-4" /> Add line
-          </button>
-          <button onClick={exportReport} disabled={rows.length === 0} className="inline-flex items-center justify-center gap-2 rounded-2xl bg-[#FF28A0] px-5 py-3 text-sm font-black text-white disabled:opacity-40">
-            <Download className="size-4" /> Report
-          </button>
-        </section>
-
-        <p className="rounded-2xl bg-white/80 px-5 py-3 text-sm font-bold text-slate-600 ring-1 ring-[#D9E7F5]">{status}</p>
-
-        <section className="grid gap-4 md:grid-cols-4">
-          {[
-            ["Items audited", rows.length, "bg-[#071A3F]"],
-            ["Flagged", flaggedRows.length, "bg-[#FF28A0]"],
-            ["Categories", categories.length, "bg-[#7E3AED]"],
-            ["Stored records", 0, "bg-[#00D4FF] text-[#071A3F]"],
-          ].map(([label, value, className]) => (
-            <div key={String(label)} className={`rounded-[24px] p-6 text-white shadow-lg ${className}`}>
-              <div className="text-3xl font-black">{String(value)}</div>
-              <div className="mt-6 text-xs font-black uppercase tracking-[0.16em]">{String(label)}</div>
-            </div>
-          ))}
-        </section>
-
-        <section className="rounded-[28px] bg-white/95 p-5 shadow-xl ring-1 ring-[#D9E7F5]">
-          <div className="mb-4 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-            <div>
-              <h2 className="text-xl font-black tracking-[-0.04em]">Temporary audit line items</h2>
-              <p className="text-sm font-semibold text-slate-500">Edits only live on this page. Refreshing or closing the link clears them.</p>
-            </div>
-            <div className="flex gap-2">
-              <select value={categoryFilter} onChange={(event) => setCategoryFilter(event.target.value as AuditCategory | "all")} className="rounded-2xl border border-[#D9E7F5] px-3 py-2 text-sm font-bold">
-                <option value="all">All categories</option>
-                {(Object.keys(CATEGORY_LABEL) as AuditCategory[]).map((category) => (
-                  <option key={category} value={category}>{CATEGORY_LABEL[category]}</option>
-                ))}
-              </select>
-              <button onClick={resetBuilder} className="inline-flex items-center gap-2 rounded-2xl border border-[#D9E7F5] px-4 py-2 text-sm font-black text-slate-700">
-                <RefreshCcw className="size-4" /> Reset
+      {!audit ? (
+        <div className="px-5 pb-12">
+          <EmptyUpload onFile={(file) => void handleUpload(file)} />
+          <p className="mx-auto mt-5 max-w-4xl rounded-2xl bg-white/80 px-5 py-3 text-center text-sm font-bold text-slate-600 ring-1 ring-[#D9E7F5]">{status}</p>
+        </div>
+      ) : (
+        <div className="mx-auto grid max-w-[1800px] gap-5 px-4 py-5 lg:grid-cols-[270px_minmax(0,1fr)]">
+          <aside className="h-fit rounded-[24px] bg-white p-3 shadow-xl ring-1 ring-[#D9E7F5] lg:sticky lg:top-5">
+            <button onClick={() => navigate("overview")} className={`flex w-full items-center gap-3 rounded-2xl px-4 py-3 text-left text-sm font-black ${activeView === "overview" ? "bg-[#071A3F] text-white" : "text-slate-700 hover:bg-slate-50"}`}>
+              <LayoutDashboard className="size-4" /> Audit overview
+            </button>
+            <button onClick={() => navigate("high-level")} className={`mt-1 flex w-full items-center gap-3 rounded-2xl px-4 py-3 text-left text-sm font-black ${activeView === "high-level" ? "bg-[#071A3F] text-white" : "text-slate-700 hover:bg-slate-50"}`}>
+              <Users className="size-4" /> High Level Info
+            </button>
+            <div className="my-3 h-px bg-slate-200" />
+            <p className="px-4 pb-2 text-[10px] font-black uppercase tracking-[0.2em] text-slate-400">Asset workspaces</p>
+            {summary.map((item) => (
+              <button
+                key={item.slug}
+                onClick={() => navigate(item.slug)}
+                className={`mb-1 flex w-full items-center justify-between rounded-2xl px-4 py-3 text-left ${activeView === item.slug ? "bg-[#7E3AED] text-white" : "text-slate-700 hover:bg-slate-50"}`}
+              >
+                <span className="text-sm font-bold">{ASSET_CATEGORIES[item.slug].label}</span>
+                <span className={`rounded-full px-2 py-0.5 text-[10px] font-black ${activeView === item.slug ? "bg-white/20" : item.flagged ? "bg-red-100 text-red-700" : "bg-slate-100 text-slate-600"}`}>
+                  {item.total}
+                </span>
               </button>
+            ))}
+            <div className="mt-3 rounded-2xl bg-[#EBF8FF] p-4 text-xs font-semibold leading-5 text-slate-600">
+              <ShieldCheck className="mb-2 size-5 text-[#7E3AED]" />
+              All edits stay in this browser tab and are included in the exported report.
             </div>
-          </div>
+          </aside>
 
-          {rows.length === 0 ? (
-            <div className="flex flex-col items-center justify-center rounded-[24px] border border-dashed border-[#D9E7F5] bg-[#EBF8FF] p-12 text-center">
-              <FileSpreadsheet className="size-12 text-[#7E3AED]" />
-              <h3 className="mt-4 text-xl font-black">Upload a workbook to begin</h3>
-              <p className="mt-2 max-w-xl text-sm font-semibold text-slate-600">
-                The audit builder parses spreadsheet rows locally, lets the auditor amend them, and generates a report without touching the saved Lifecycle client data.
-              </p>
-            </div>
-          ) : (
-            <div className="overflow-x-auto">
-              <table className="min-w-[1100px] w-full border-separate border-spacing-y-2 text-left text-sm">
-                <thead className="text-xs uppercase tracking-[0.16em] text-slate-500">
-                  <tr>
-                    <th className="px-3">Category</th>
-                    <th className="px-3">Subcategory</th>
-                    <th className="px-3">Item</th>
-                    <th className="px-3">Supplier / Model</th>
-                    <th className="px-3">Status</th>
-                    <th className="px-3">Flagged</th>
-                    <th className="px-3">Notes</th>
-                    <th className="px-3" />
-                  </tr>
-                </thead>
-                <tbody>
-                  {visibleRows.map((row) => (
-                    <tr key={row.id} className="bg-[#F8FCFF] align-top shadow-sm">
-                      <td className="rounded-l-2xl p-2">
-                        <select value={row.category} onChange={(event) => updateRow(row.id, { category: event.target.value as AuditCategory })} className="w-44 rounded-xl border border-[#D9E7F5] px-2 py-2 font-semibold">
-                          {(Object.keys(CATEGORY_LABEL) as AuditCategory[]).map((category) => (
-                            <option key={category} value={category}>{CATEGORY_LABEL[category]}</option>
-                          ))}
-                        </select>
-                      </td>
-                      <td className="p-2"><input value={row.subcategory} onChange={(event) => updateRow(row.id, { subcategory: event.target.value })} className="w-40 rounded-xl border border-[#D9E7F5] px-2 py-2" /></td>
-                      <td className="p-2"><input value={row.name} onChange={(event) => updateRow(row.id, { name: event.target.value })} className="w-52 rounded-xl border border-[#D9E7F5] px-2 py-2" /></td>
-                      <td className="p-2"><input value={row.supplier} onChange={(event) => updateRow(row.id, { supplier: event.target.value })} className="w-44 rounded-xl border border-[#D9E7F5] px-2 py-2" /></td>
-                      <td className="p-2"><input value={row.status} onChange={(event) => updateRow(row.id, { status: event.target.value })} className="w-36 rounded-xl border border-[#D9E7F5] px-2 py-2" /></td>
-                      <td className="p-2 text-center">
-                        <input type="checkbox" checked={row.flagged} onChange={(event) => updateRow(row.id, { flagged: event.target.checked })} className="mt-3 size-5 accent-[#FF28A0]" />
-                      </td>
-                      <td className="p-2"><textarea value={row.notes} onChange={(event) => updateRow(row.id, { notes: event.target.value })} className="h-12 w-64 rounded-xl border border-[#D9E7F5] px-2 py-2" /></td>
-                      <td className="rounded-r-2xl p-2">
-                        <button onClick={() => setRows((current) => current.filter((item) => item.id !== row.id))} className="rounded-xl p-2 text-[#FF28A0] hover:bg-[#FFEAF7]">
-                          <Trash2 className="size-4" />
-                        </button>
-                      </td>
-                    </tr>
+          <section className="min-w-0 space-y-5">
+            <p className="rounded-2xl bg-white/80 px-5 py-3 text-sm font-bold text-slate-600 shadow-sm ring-1 ring-[#D9E7F5]">{status}</p>
+
+            {activeView === "overview" && (
+              <>
+                <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+                  {[
+                    ["Assets tracked", rows.length, "bg-[#071A3F]"],
+                    ["Flagged items", totalFlagged, "bg-[#FF2AA0]"],
+                    ["Audit categories", summary.filter((item) => item.total > 0).length, "bg-[#7E3AED]"],
+                    ["Stored records", 0, "bg-[#00D4FF] text-[#071A3F]"],
+                  ].map(([label, value, className]) => (
+                    <div key={String(label)} className={`rounded-[24px] p-6 text-white shadow-lg ${className}`}>
+                      <p className="text-3xl font-black">{String(value)}</p>
+                      <p className="mt-5 text-xs font-black uppercase tracking-[0.14em]">{String(label)}</p>
+                    </div>
                   ))}
-                </tbody>
-              </table>
-            </div>
-          )}
-        </section>
+                </div>
+                <div className="rounded-[26px] bg-white p-6 shadow-xl ring-1 ring-[#D9E7F5]">
+                  <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
+                    <div>
+                      <p className="text-xs font-black uppercase tracking-[0.2em] text-[#7E3AED]">Imported audit scope</p>
+                      <h2 className="mt-1 text-3xl font-black tracking-[-0.04em]">{clientName}</h2>
+                      <p className="mt-2 text-sm font-semibold text-slate-500">
+                        {audit.highLevel.siteName || "Site not recorded"} · {audit.highLevel.auditDate || "Audit date not recorded"} · {audit.highLevel.auditor || "Auditor not recorded"}
+                      </p>
+                    </div>
+                    <button onClick={() => navigate("high-level")} className="inline-flex items-center gap-2 text-sm font-black text-[#7E3AED]">
+                      Edit profile <ChevronRight className="size-4" />
+                    </button>
+                  </div>
+                  <div className="mt-6 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+                    {summary.map((item) => (
+                      <button key={item.slug} onClick={() => navigate(item.slug)} className="rounded-2xl border border-slate-200 bg-slate-50 p-4 text-left transition hover:-translate-y-0.5 hover:border-[#7E3AED]/40 hover:shadow-md">
+                        <div className="flex items-start justify-between gap-3">
+                          <div>
+                            <h3 className="font-black">{ASSET_CATEGORIES[item.slug].label}</h3>
+                            <p className="mt-1 text-xs font-semibold text-slate-500">{item.total} item(s) · {item.flagged} flagged · {item.warnings} warnings</p>
+                          </div>
+                          <ChevronRight className="size-4 text-slate-400" />
+                        </div>
+                        <div className="mt-4 h-2 overflow-hidden rounded-full bg-slate-200">
+                          <div className="h-full bg-[#FF2AA0]" style={{ width: `${item.total ? Math.round((item.flagged / item.total) * 100) : 0}%` }} />
+                        </div>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+                <div className="rounded-[26px] bg-white p-6 shadow-xl ring-1 ring-[#D9E7F5]">
+                  <h2 className="text-xl font-black">Workbook import summary</h2>
+                  <div className="mt-4 overflow-x-auto">
+                    <table className="w-full text-left text-sm">
+                      <thead><tr className="border-b border-slate-200 text-xs uppercase tracking-[0.12em] text-slate-500"><th className="p-3">Sheet</th><th className="p-3">Section</th><th className="p-3">Workspace</th><th className="p-3 text-right">Imported</th><th className="p-3 text-right">Skipped</th></tr></thead>
+                      <tbody>
+                        {audit.sheets.map((sheet, index) => (
+                          <tr key={`${sheet.sheetName}-${sheet.sectionTitle}-${index}`} className="border-b border-slate-100">
+                            <td className="p-3 font-bold">{sheet.sheetName}</td>
+                            <td className="p-3 text-slate-600">{sheet.sectionTitle || "—"}</td>
+                            <td className="p-3 text-slate-600">{sheet.matchedCategory ? ASSET_CATEGORIES[sheet.matchedCategory].label : sheet.sheetName.match(/high level/i) ? "High Level Info" : "Not an asset table"}</td>
+                            <td className="p-3 text-right font-black">{sheet.rowsImported}</td>
+                            <td className="p-3 text-right text-slate-500">{sheet.rowsSkipped}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              </>
+            )}
 
-        <section className="flex items-center gap-3 rounded-[24px] bg-[#071A3F] p-5 text-sm font-bold text-white">
-          <ShieldCheck className="size-5 text-[#00D4FF]" />
-          This link is intentionally isolated: it uses in-page temporary state, does not call the import API, and does not create or update clients, sites, assets, projects, or reports in the core app.
-        </section>
-      </div>
+            {activeView === "high-level" && (
+              <div className="space-y-5">
+                <div className="rounded-[26px] bg-white p-6 shadow-xl ring-1 ring-[#D9E7F5]">
+                  <p className="text-xs font-black uppercase tracking-[0.2em] text-[#7E3AED]">Client and site profile</p>
+                  <h2 className="mt-1 text-3xl font-black tracking-[-0.04em]">High Level Information</h2>
+                  <div className="mt-6 grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+                    {HIGH_LEVEL_FIELDS.map((field) => (
+                      <label key={field.key} className="space-y-1.5">
+                        <span className="text-xs font-bold text-slate-600">{field.label}</span>
+                        <input
+                          type={field.type ?? "text"}
+                          value={audit.highLevel[field.key]}
+                          onChange={(event) => updateHighLevel(field.key, event.target.value)}
+                          className="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm outline-none focus:border-[#7E3AED]"
+                        />
+                      </label>
+                    ))}
+                  </div>
+                </div>
+                <div className="rounded-[26px] bg-white p-6 shadow-xl ring-1 ring-[#D9E7F5]">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <h2 className="text-xl font-black">Main contacts</h2>
+                      <p className="text-sm font-semibold text-slate-500">Editable contacts imported from the workbook.</p>
+                    </div>
+                    <button onClick={addContact} className="inline-flex items-center gap-2 rounded-xl bg-[#7E3AED] px-4 py-2.5 text-sm font-black text-white"><Plus className="size-4" /> Add contact</button>
+                  </div>
+                  <div className="mt-4 overflow-x-auto">
+                    <table className="min-w-[1050px] w-full text-left text-sm">
+                      <thead><tr className="bg-[#071A3F] text-xs uppercase tracking-[0.12em] text-white"><th className="p-3">Role</th><th className="p-3">Name</th><th className="p-3">Email</th><th className="p-3">Phone</th><th className="p-3">Notes</th><th className="p-3" /></tr></thead>
+                      <tbody>
+                        {audit.highLevel.contacts.map((contact) => (
+                          <tr key={contact.id} className="border-b border-slate-100">
+                            {(["role", "name", "email", "phone", "notes"] as const).map((key) => (
+                              <td key={key} className="p-2"><input value={contact[key]} onChange={(event) => updateContact(contact.id, { [key]: event.target.value })} className="w-full min-w-40 rounded-lg border border-slate-200 px-2 py-1.5 text-xs" /></td>
+                            ))}
+                            <td className="p-2"><button onClick={() => setAudit((current) => current ? { ...current, highLevel: { ...current.highLevel, contacts: current.highLevel.contacts.filter((item) => item.id !== contact.id) } } : current)} className="rounded-lg p-2 text-red-600 hover:bg-red-50"><Trash2 className="size-4" /></button></td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {activeCategory && (
+              <>
+                <div className="rounded-[26px] bg-white p-6 shadow-xl ring-1 ring-[#D9E7F5]">
+                  <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
+                    <div>
+                      <p className="text-xs font-black uppercase tracking-[0.2em] text-[#7E3AED]">Asset workspace</p>
+                      <h2 className="mt-1 text-3xl font-black tracking-[-0.04em]">{ASSET_CATEGORIES[activeCategory].label}</h2>
+                      <p className="mt-2 text-sm font-semibold text-slate-500">{filteredRows.length} item(s) · {filteredRows.filter((row) => row.flagged).length} flagged for attention</p>
+                    </div>
+                    <div className="flex flex-wrap gap-2">
+                      {activeCategory === "migration" && (
+                        <select
+                          value={migrationFilter}
+                          onChange={(event) => {
+                            setMigrationFilter(event.target.value as MigrationFilter);
+                            setVisibleLimit(INITIAL_VISIBLE_ROWS);
+                          }}
+                          className="rounded-xl border border-slate-200 px-3 py-2.5 text-sm font-bold"
+                        >
+                          <option value="all">All platforms</option>
+                          <option value="Microsoft">Microsoft</option>
+                          <option value="Google">Google</option>
+                          <option value="Other">Other</option>
+                        </select>
+                      )}
+                      <button onClick={() => setAddCategory(activeCategory)} className="inline-flex items-center gap-2 rounded-xl bg-[#7E3AED] px-4 py-2.5 text-sm font-black text-white"><Plus className="size-4" /> Add item</button>
+                    </div>
+                  </div>
+                  <div className="mt-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-6">
+                    {categoryGroups(activeCategory, filteredRows).map((group) => (
+                      <div key={group.label} className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                        <p className="text-2xl font-black">{group.rows.length}</p>
+                        <p className="mt-1 text-xs font-bold text-slate-500">{group.label}</p>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                {groups.map((group) => (
+                  <div key={group.label} className="overflow-hidden rounded-[26px] bg-white shadow-xl ring-1 ring-[#D9E7F5]">
+                    <div className="flex items-center justify-between border-b border-slate-200 px-6 py-4">
+                      <div>
+                        <h3 className="text-lg font-black">{group.label}</h3>
+                        <p className="text-xs font-semibold text-slate-500">{group.rows.length} visible row(s)</p>
+                      </div>
+                      <span className="rounded-full bg-red-50 px-3 py-1 text-xs font-black text-red-700">{group.rows.filter((row) => row.flagged).length} flagged</span>
+                    </div>
+                    <div className="overflow-x-auto">
+                      <table className="w-full border-separate border-spacing-0 text-left">
+                        <thead className="sticky top-0 z-20 bg-[#071A3F] text-white">
+                          <tr>
+                            <th className="sticky left-0 z-30 min-w-12 bg-[#071A3F] p-3 text-center text-[10px] uppercase tracking-[0.12em]">Risk</th>
+                            {ASSET_CATEGORIES[activeCategory].fields.map((field) => (
+                              <th key={field.key} className="min-w-40 p-3 text-[10px] uppercase tracking-[0.12em]">{field.label}</th>
+                            ))}
+                            <th className="min-w-72 p-3 text-[10px] uppercase tracking-[0.12em]">Assessment</th>
+                            <th className="sticky right-0 z-30 min-w-16 bg-[#071A3F] p-3" />
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {group.rows.map((row, index) => (
+                            <tr key={row.id} className={`${index % 2 ? "bg-slate-50/70" : "bg-white"} ${row.flagged ? "bg-red-50/70" : row.warnReasons.length ? "bg-amber-50/70" : ""}`}>
+                              <td className="sticky left-0 z-10 border-b border-r border-slate-200 bg-inherit p-3 text-center">
+                                {row.flagged ? <AlertTriangle className="mx-auto size-4 text-red-500" /> : row.warnReasons.length ? <Clock3 className="mx-auto size-4 text-amber-500" /> : <CheckCircle2 className="mx-auto size-4 text-emerald-500" />}
+                              </td>
+                              {ASSET_CATEGORIES[activeCategory].fields.map((field) => (
+                                <td key={field.key} className="border-b border-slate-200 p-2 align-top">
+                                  <FieldEditor field={field} value={row[field.key]} onChange={(value) => updateRow(row.id, field.key, value)} compact />
+                                </td>
+                              ))}
+                              <td className="border-b border-slate-200 p-3 align-top"><RiskBadge row={row} /></td>
+                              <td className="sticky right-0 z-10 border-b border-l border-slate-200 bg-inherit p-2">
+                                <button onClick={() => deleteRow(row.id)} title={`Delete ${rowTitle(row)}`} className="rounded-lg p-2 text-red-600 hover:bg-red-50"><Trash2 className="size-4" /></button>
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                ))}
+
+                {visibleLimit < filteredRows.length && (
+                  <button onClick={() => setVisibleLimit((current) => current + INITIAL_VISIBLE_ROWS)} className="w-full rounded-2xl border border-[#7E3AED]/30 bg-white px-5 py-3 text-sm font-black text-[#7E3AED] shadow-sm">
+                    Show next {Math.min(INITIAL_VISIBLE_ROWS, filteredRows.length - visibleLimit)} rows
+                  </button>
+                )}
+              </>
+            )}
+          </section>
+        </div>
+      )}
+      {addCategory && <AddItemModal category={addCategory} onClose={() => setAddCategory(null)} onSave={(values) => addRow(addCategory, values)} />}
     </main>
   );
 }
