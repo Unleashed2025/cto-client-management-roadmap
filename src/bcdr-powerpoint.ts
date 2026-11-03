@@ -88,6 +88,38 @@ export async function exportBcdrPowerPoint(apps: BcdrApp[], clientName: string) 
   ]), { x: 0.55, y: 1.3, w: 12.2, colW: [4, 8.2], rowH: 0.45, fontSize: 11 });
   footer(summary, "Indicative assessment based on information supplied by the client. RTO/RPO gaps compare the business requirement with the current achievable recovery.");
 
+  const dash = pptx.addSlide();
+  addHeader(dash, "Resilience dashboard", `${clientName} · ${title}`, COLORS.cyan);
+  const dial = (x: number, value: number, label: string, caption: string) => {
+    const v = Math.max(0, Math.min(100, Math.round(value)));
+    const color = v >= 75 ? "059669" : v >= 50 ? "F59E0B" : "B91C1C";
+    dash.addShape(pptx.ShapeType.roundRect, { x, y: 1.3, w: 3.95, h: 1.75, rectRadius: 0.06, fill: { color: COLORS.white }, line: { color: COLORS.line, pt: 1 } });
+    dash.addChart(pptx.ChartType.doughnut, [{ name: label, labels: [label, "Remaining"], values: [v, 100 - v] }], { x: x + 0.12, y: 1.38, w: 1.6, h: 1.6, holeSize: 72, chartColors: [color, "E2E8F0"], showLegend: false, showLabel: false, showValue: false, showPercent: false, dataBorder: { pt: 0, color: "FFFFFF" } });
+    dash.addText(`${v}%`, { x: x + 0.12, y: 1.9, w: 1.6, h: 0.5, align: "center", bold: true, fontSize: 20, color, margin: 0 });
+    dash.addText(label, { x: x + 1.85, y: 1.75, w: 1.95, h: 0.3, bold: true, fontSize: 13, color: COLORS.navy, margin: 0 });
+    dash.addText(caption, { x: x + 1.85, y: 2.1, w: 1.95, h: 0.6, fontSize: 9, color: COLORS.slate, valign: "top", margin: 0 });
+  };
+  const share = (count: number) => (apps.length > 0 ? (count / apps.length) * 100 : 0);
+  const yes = (key: string) => apps.filter((app) => app[key] === "Yes").length;
+  const within = calcs.filter((calc) => calc.gapRisk === "Within requirement").length;
+  dial(0.55, share(within), "Meets RTO / RPO", `${within} of ${apps.length} application(s) meet their requirement`);
+  dial(4.675, share(yes("bkProtected")), "Backed up", `${yes("bkProtected")} of ${apps.length} application(s) have backup in place`);
+  dial(8.8, share(yes("drAvail")), "DR available", `${yes("drAvail")} of ${apps.length} application(s) have a DR option`);
+  const card = (x: number, w: number, heading: string) => {
+    dash.addShape(pptx.ShapeType.roundRect, { x, y: 3.2, w, h: 3.8, rectRadius: 0.06, fill: { color: COLORS.white }, line: { color: COLORS.line, pt: 1 } });
+    dash.addText(heading, { x: x + 0.25, y: 3.32, w: w - 0.5, h: 0.3, bold: true, fontSize: 14, color: COLORS.navy, margin: 0 });
+  };
+  card(0.55, 7.4, "Recovery time (hours): required vs achievable");
+  card(8.2, 4.55, "Recovery gap risk");
+  const listed = apps.map((app, index) => ({ name: (app.name || `Application ${index + 1}`).slice(0, 28), req: Number.parseFloat(app.reqRto) || 0, ach: Number.parseFloat(app.achRto) || 0 })).slice(0, 8).reverse();
+  dash.addChart(pptx.ChartType.bar, [
+    { name: "Achievable RTO", labels: listed.map((a) => a.name), values: listed.map((a) => a.ach) },
+    { name: "Required RTO", labels: listed.map((a) => a.name), values: listed.map((a) => a.req) },
+  ], { x: 0.7, y: 3.65, w: 7.1, h: 3.3, barDir: "bar", barGrouping: "clustered", chartColors: ["FF2AA0", "7E3AED"], showValue: true, dataLabelFontSize: 8, showLegend: true, legendPos: "b", legendFontSize: 9, catAxisLabelFontSize: 10, valAxisLabelFontSize: 9, valGridLine: { color: "E2E8F0", size: 0.5 }, barGapWidthPct: 50 });
+  const gapCounts = ["Within requirement", "Medium", "High", "Not assessed"].map((label) => calcs.filter((calc) => calc.gapRisk === label).length);
+  dash.addChart(pptx.ChartType.doughnut, [{ name: "Applications", labels: ["Within requirement", "Medium gap", "High gap", "Not assessed"], values: gapCounts }], { x: 8.35, y: 3.65, w: 4.25, h: 3.3, holeSize: 55, chartColors: ["059669", "F59E0B", "B91C1C", "94A3B8"], showLegend: true, legendPos: "b", legendFontSize: 9, showPercent: false, showValue: true, dataLabelColor: COLORS.white, dataLabelFontSize: 10, dataBorder: { pt: 1, color: "FFFFFF" } });
+  footer(dash, "Required RTO is the business requirement; achievable RTO is what the current protection can deliver today.");
+
   const catalogueRows = apps.map((app) => catalogueCells(catalogueRow(app)));
   for (let start = 0; start < Math.max(catalogueRows.length, 1); start += 9) {
     const slide = pptx.addSlide();
