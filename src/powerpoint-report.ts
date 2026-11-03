@@ -268,11 +268,13 @@ export async function exportPowerPointReport(audit: BrowserAudit, clientName: st
         : [["No flagged categories", "0"]],
       COLORS.pink,
     ), { x: 8.0, y: 2.45, w: 4.75, h: 2.9, colW: [3.45, 1.3], rowH: 0.39, fontSize: 9.5, margin: 0.06, border: { color: COLORS.line, pt: 1 }, autoPage: false });
+    highlights.addShape(pptx.ShapeType.roundRect, { x: 0.55, y: 5.55, w: 12.2, h: 0.92, rectRadius: 0.05, fill: { color: COLORS.white }, line: { color: COLORS.line, pt: 1 } });
+    highlights.addText("How to read these figures", { x: 0.8, y: 5.76, w: 2.65, h: 0.2, bold: true, fontSize: 10, color: COLORS.navy, margin: 0 });
     highlights.addText(
       `The ${section.flagged} flagged figure is the number of unique items. Category quantities may total more because one item can have multiple flag reasons.`,
-      { x: 8.1, y: 5.55, w: 4.55, h: 0.55, fontSize: 8.5, italic: true, color: COLORS.slate, margin: 0, breakLine: false },
+      { x: 3.05, y: 5.72, w: 9.35, h: 0.3, fontSize: 10, color: COLORS.slate, margin: 0, breakLine: false },
     );
-    addFooter(highlights, "Flag categories show affected-item counts and may overlap.");
+    addFooter(highlights, "Counts and flag-category quantities use the complete imported workbook.");
 
     const flagged = addSlide();
     addHeader(flagged, slideCount, `${section.label} — example flagged items`, `${clientName} · representative flagged detail limited to one page`, COLORS.pink);

@@ -520,13 +520,21 @@ export async function exportFullAuditReport(audit: BrowserAudit, clientName: str
       margin: { left: margin, right: margin },
       columnStyles: { 0: { cellWidth: pageWidth - margin * 2 - 180 }, 1: { cellWidth: 180, halign: "center" } },
     });
+    const flagNoteY = Math.min(lastTableY() + 16, pageHeight - 86);
+    doc.setFillColor(...BRAND.white);
+    doc.setDrawColor(217, 231, 245);
+    doc.roundedRect(margin, flagNoteY, pageWidth - margin * 2, 52, 8, 8, "FD");
+    doc.setTextColor(...BRAND.navy);
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(9);
+    doc.text("How to read these figures", margin + 14, flagNoteY + 20);
     doc.setTextColor(...BRAND.slate);
-    doc.setFont("helvetica", "italic");
-    doc.setFontSize(7.5);
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(8);
     doc.text(
       `The ${section.flagged} flagged figure is the number of unique items. Category quantities may total more because one item can have multiple flag reasons.`,
-      margin,
-      Math.min(lastTableY() + 14, pageHeight - 22),
+      margin + 14,
+      flagNoteY + 38,
     );
 
     y = newPage(`${section.label} — example flagged items`, `${clientName} · representative flagged detail limited to one page`, BRAND.pink);
