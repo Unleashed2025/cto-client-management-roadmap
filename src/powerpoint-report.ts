@@ -1,5 +1,5 @@
 import type PptxGenJS from "pptxgenjs";
-import { ASSET_CATEGORIES, type AssetCategorySlug, type AuditRow, type BrowserAudit } from "./audit-model";
+import { ASSET_CATEGORIES, displayValue, type AssetCategorySlug, type AuditRow, type BrowserAudit } from "./audit-model";
 import { downloadBlob } from "./download-file";
 import { buildCategoryReportSections, buildReportModel, REPORT_STRUCTURE } from "./full-audit-report";
 
@@ -43,23 +43,6 @@ function tableRows(headers: string[], rows: string[][], headerColor = COLORS.nav
   ];
 }
 
-function inventorySampleRow(row: AuditRow): string[] {
-  const config = ASSET_CATEGORIES[row.auditCategory];
-  const detail =
-    row.auditCategory === "data-infra"
-      ? [row.manufacturer, row.model, row.osHypervisor, row.roleWorkload]
-      : row.auditCategory === "network"
-        ? [row.assetType, row.manufacturer, row.model, row.location]
-        : [row.manufacturer, row.model, row.operatingSystem, row.location];
-  return [
-    config.label,
-    compact(row[config.titleField], 34),
-    compact(row.sectionTitle, 28),
-    compact(detail.filter(Boolean).join(" · "), 62),
-    compact(row.warrantyStatus ?? row.replacementPriority ?? row.status, 22),
-  ];
-}
-
 function flaggedSampleRow(row: AuditRow): string[] {
   const config = ASSET_CATEGORIES[row.auditCategory];
   return [
@@ -70,6 +53,89 @@ function flaggedSampleRow(row: AuditRow): string[] {
     compact(row.flagReasons.join("; ") || row.warnReasons.join("; "), 76),
     compact(row.remediationRequired ?? row.actionsRequired ?? row.risksActions ?? row.notes, 66),
   ];
+}
+
+function fieldDisplay(row: AuditRow, key: string): string {
+  const field = ASSET_CATEGORIES[row.auditCategory].fields.find((candidate) => candidate.key === key);
+  return field ? displayValue(field, row[key]) : text(row[key]);
+}
+
+function auditedItemsTable(slug: AssetCategorySlug, rows: AuditRow[]): { headers: string[]; rows: string[][]; widths: number[]; rowHeight: number } {
+  if (slug === "data-infra") {
+    return {
+      headers: ["Item", "Type", "Manufacturer / Model", "OS / Hypervisor", "Role / Workload", "Lifecycle"],
+      rows: rows.map((row) => [
+        compact(row.serverName, 28),
+        compact(fieldDisplay(row, "physicalVirtual"), 14),
+        compact([row.manufacturer, row.model].filter(Boolean).join(" · "), 28),
+        compact(row.osHypervisor, 24),
+        compact(row.roleWorkload, 30),
+        compact([fieldDisplay(row, "warrantyStatus"), row.endOfSupport, row.endOfServiceLife].filter((value) => value && value !== "—").join(" · "), 34),
+      ]),
+      widths: [2.1, 1.0, 2.15, 1.8, 2.55, 2.6],
+      rowHeight: 0.33,
+    };
+  }
+  if (slug === "network") {
+    return {
+      headers: ["Item", "Type", "Manufacturer / Model", "Firmware / Wi-Fi", "Location", "Lifecycle"],
+      rows: rows.map((row) => [
+        compact(row.name, 28),
+        compact(fieldDisplay(row, "assetType"), 18),
+        compact([row.manufacturer, row.model].filter(Boolean).join(" · "), 28),
+        compact([row.firmwareVersion, row.wifiStandard].filter(Boolean).join(" · "), 26),
+        compact(row.location, 24),
+        compact([fieldDisplay(row, "warrantyStatus"), row.endOfSupport, row.endOfServiceLife].filter((value) => value && value !== "—").join(" · "), 34),
+      ]),
+      widths: [2.1, 1.25, 2.25, 2.0, 1.8, 2.8],
+      rowHeight: 0.33,
+    };
+  }
+  if (slug === "client-compute") {
+    return {
+      headers: ["Device category", "Manufacturer / Model", "Operating system", "Qty", "Owner / Location", "Priority / Lifecycle"],
+      rows: rows.map((row) => [
+        compact(row.deviceCategory, 28),
+        compact([row.manufacturer, row.model].filter(Boolean).join(" · "), 28),
+        compact(row.operatingSystem, 24),
+        compact(row.quantity, 8),
+        compact([row.ownerDepartment, row.location].filter(Boolean).join(" · "), 28),
+        compact([fieldDisplay(row, "replacementPriority"), fieldDisplay(row, "warrantyStatus"), row.endOfSupport].filter((value) => value && value !== "—").join(" · "), 32),
+      ]),
+      widths: [2.15, 2.25, 2.0, 0.55, 2.15, 3.1],
+      rowHeight: 0.33,
+    };
+  }
+  if (slug === "software") {
+    return {
+      headers: ["Software / System", "Category", "Supplier", "Purpose", "Deployment", "Owner", "Renewal / Support"],
+      rows: rows.map((row) => [
+        compact(row.softwareSystem, 34),
+        compact(row.category, 20),
+        compact(row.supplier, 24),
+        compact(row.purpose, 44),
+        compact(fieldDisplay(row, "deploymentModel"), 18),
+        compact(row.owner, 20),
+        compact([row.contractRenewalDate, fieldDisplay(row, "supportStatus")].filter(Boolean).join(" · "), 32),
+      ]),
+      widths: [2.0, 1.1, 1.3, 2.5, 1.1, 1.2, 3.0],
+      rowHeight: 0.36,
+    };
+  }
+  return {
+    headers: ["Control", "Brilliant Basics", "Installed", "Solution / Supplier", "Coverage", "Status / Risk", "Evidence / Actions"],
+    rows: rows.map((row) => [
+      compact(row.controlArea, 34),
+      compact(fieldDisplay(row, "partOfBrilliantBasics"), 12),
+      compact(fieldDisplay(row, "installed"), 12),
+      compact(row.solutionSupplier, 30),
+      compact(row.coverage, 30),
+      compact([fieldDisplay(row, "status"), fieldDisplay(row, "riskRating")].filter((value) => value !== "—").join(" · "), 24),
+      compact([row.evidenceNotes, row.actionsRequired].filter(Boolean).join(" · "), 46),
+    ]),
+    widths: [2.0, 0.9, 0.8, 1.8, 1.7, 1.35, 3.65],
+    rowHeight: 0.29,
+  };
 }
 
 async function logoDataUrl(): Promise<string | null> {
@@ -285,6 +351,43 @@ export async function exportPowerPointReport(audit: BrowserAudit, clientName: st
     );
     addFooter(highlights, "Counts and flag-category quantities use the complete imported workbook.");
 
+    {
+      const auditedItemsTableData = auditedItemsTable(section.slug, section.auditedRows);
+      const listDescription = section.auditedRowsComplete
+        ? `Complete audited list — all ${section.total} imported item(s) are shown.`
+        : `Representative audited list — ${section.auditedRows.length} examples shown from ${section.total} item(s); see the raw workbook for the complete inventory.`;
+      const auditedItems = addSlide();
+      addHeader(auditedItems, slideCount, `${section.label} — audited items`, `${clientName} · one-page audited-item list`, color);
+      auditedItems.addText(listDescription, {
+        x: 0.58,
+        y: 1.18,
+        w: 12.1,
+        h: 0.23,
+        bold: true,
+        fontSize: 11,
+        color: COLORS.navy,
+        margin: 0,
+      });
+      auditedItems.addTable(tableRows(auditedItemsTableData.headers, auditedItemsTableData.rows, color), {
+        x: 0.55,
+        y: 1.53,
+        w: 12.2,
+        h: 5.35,
+        colW: auditedItemsTableData.widths,
+        rowH: auditedItemsTableData.rowHeight,
+        fontSize: 6.6,
+        margin: 0.035,
+        border: { color: COLORS.line, pt: 0.8 },
+        autoPage: false,
+      });
+      addFooter(
+        auditedItems,
+        section.auditedRowsComplete
+          ? `All ${section.total} audited ${section.label.toLowerCase()} item(s) are included on this slide.`
+          : `${section.auditedRows.length} representative examples shown from ${section.total} audited item(s); the raw workbook contains the complete list.`,
+      );
+    }
+
     const flagged = addSlide();
     addHeader(flagged, slideCount, `${section.label} — example flagged items`, `${clientName} · representative flagged detail limited to one page`, COLORS.pink);
     flagged.addText("Example flagged items limited to one page — see the raw data for the complete flagged-item list.", { x: 0.58, y: 1.18, w: 12.1, h: 0.23, bold: true, fontSize: 11, color: COLORS.navy, margin: 0 });
@@ -309,16 +412,6 @@ export async function exportPowerPointReport(audit: BrowserAudit, clientName: st
     addStrategyCard(strategy, 8.82, 3.25, 3.93, 3.45, "2 years", section.plan2Years);
     addFooter(strategy, "Roadmap actions are editable and should be refined with owners, dates and budget.");
   }
-
-  const inventory = addSlide();
-  addHeader(inventory, slideCount, "Representative Audited Items", `${clientName} · example inventory only`, COLORS.cyan);
-  inventory.addText("Representative/example list — the raw workbook contains the complete audited inventory.", { x: 0.58, y: 1.18, w: 12.1, h: 0.23, bold: true, fontSize: 11, color: COLORS.navy, margin: 0 });
-  inventory.addTable(tableRows(
-    ["Category", "Item", "Workbook section", "Representative detail", "Lifecycle / priority"],
-    model.inventorySample.map(inventorySampleRow),
-    COLORS.cyan,
-  ), { x: 0.55, y: 1.53, w: 12.2, h: 5.35, colW: [1.8, 2.15, 1.8, 4.65, 1.8], rowH: 0.265, fontSize: 7.2, margin: 0.04, border: { color: COLORS.line, pt: 0.8 }, autoPage: false });
-  addFooter(inventory, `${model.inventorySample.length} examples shown from Data Infrastructure, Network and Client Compute.`);
 
   if (slideCount !== REPORT_STRUCTURE.length) {
     throw new Error(`Expected ${REPORT_STRUCTURE.length} slides but generated ${slideCount}`);

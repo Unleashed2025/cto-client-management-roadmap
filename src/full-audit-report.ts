@@ -30,10 +30,10 @@ export const REPORT_STRUCTURE = [
   "High Level Information",
   ...ASSET_CATEGORY_SLUGS.flatMap((slug) => [
     `${ASSET_CATEGORIES[slug].label} — highlights`,
+    `${ASSET_CATEGORIES[slug].label} — audited items`,
     `${ASSET_CATEGORIES[slug].label} — example flagged items`,
     `${ASSET_CATEGORIES[slug].label} — strategy`,
   ]),
-  "Representative Audited Items",
 ];
 
 const CATEGORY_COLOR: Record<AssetCategorySlug, [number, number, number]> = {
@@ -57,7 +57,6 @@ export interface ReportModel {
   highLevel: HighLevelInfo;
   categorySummary: ReportCategorySummary[];
   groupSummary: Array<{ category: string; group: string; total: number; flagged: number }>;
-  inventorySample: AuditRow[];
   totalRows: number;
   totalFlagged: number;
   populatedSheets: number;
@@ -70,6 +69,8 @@ export interface CategoryReportSection {
   flagged: number;
   warnings: number;
   groups: Array<{ label: string; total: number; flagged: number }>;
+  auditedRows: AuditRow[];
+  auditedRowsComplete: boolean;
   operatingSystems: Array<{ label: string; count: number }>;
   flaggedThemes: Array<{ label: string; count: number }>;
   flaggedSample: AuditRow[];
@@ -111,6 +112,20 @@ function prioritySample(rows: AuditRow[], maximum: number): AuditRow[] {
       return (riskOrder[text(right.riskRating) as keyof typeof riskOrder] ?? 0) - (riskOrder[text(left.riskRating) as keyof typeof riskOrder] ?? 0);
     });
   return balancedSample(priority, maximum);
+}
+
+function representativeCategoryRows(slug: AssetCategorySlug, rows: AuditRow[], maximum = 14): AuditRow[] {
+  if (rows.length <= 16) return rows;
+  const buckets = categoryGroups(slug, rows).map((group) => group.rows);
+  const sample: AuditRow[] = [];
+  let index = 0;
+  while (sample.length < maximum && buckets.some((bucket) => index < bucket.length)) {
+    for (const bucket of buckets) {
+      if (bucket[index] && sample.length < maximum) sample.push(bucket[index]);
+    }
+    index += 1;
+  }
+  return sample;
 }
 
 function flagTheme(reason: string): string {
@@ -208,14 +223,11 @@ export function buildReportModel(audit: BrowserAudit, clientName: string): Repor
       flagged: group.rows.filter((row) => row.flagged).length,
     }));
   });
-  const inventoryCategories: AssetCategorySlug[] = ["data-infra", "network", "client-compute"];
-  const inventoryRows = audit.rows.filter((row) => inventoryCategories.includes(row.auditCategory));
   return {
     clientName,
     highLevel: audit.highLevel,
     categorySummary,
     groupSummary,
-    inventorySample: balancedSample(inventoryRows, 18, inventoryCategories),
     totalRows: audit.rows.length,
     totalFlagged: audit.rows.filter((row) => row.flagged).length,
     populatedSheets: new Set(audit.sheets.filter((sheet) => sheet.rowsImported > 0).map((sheet) => sheet.sheetName)).size,
@@ -238,6 +250,8 @@ export function buildCategoryReportSections(audit: BrowserAudit): CategoryReport
         total: group.rows.length,
         flagged: group.rows.filter((row) => row.flagged).length,
       })),
+      auditedRows: representativeCategoryRows(slug, rows),
+      auditedRowsComplete: rows.length <= 16,
       operatingSystems: slug === "data-infra" ? operatingSystemSummary(rows) : [],
       flaggedThemes: [...rows.reduce((themes, row) => {
         if (!row.flagged) return themes;
@@ -265,23 +279,6 @@ function profileRows(info: HighLevelInfo): string[][] {
   ];
 }
 
-function inventorySampleRow(row: AuditRow): string[] {
-  const config = ASSET_CATEGORIES[row.auditCategory];
-  const detail =
-    row.auditCategory === "data-infra"
-      ? [row.manufacturer, row.model, row.osHypervisor, row.roleWorkload]
-      : row.auditCategory === "network"
-        ? [displayValue(config.fields.find((field) => field.key === "assetType")!, row.assetType), row.manufacturer, row.model, row.location]
-        : [row.manufacturer, row.model, row.operatingSystem, row.location];
-  return [
-    config.label,
-    compact(row[config.titleField], 42),
-    compact(row.sectionTitle, 34),
-    compact(detail.filter(Boolean).join(" · "), 80),
-    compact(row.warrantyStatus ?? row.replacementPriority ?? row.status, 28),
-  ];
-}
-
 function flaggedSampleRow(row: AuditRow): string[] {
   const config = ASSET_CATEGORIES[row.auditCategory];
   return [
@@ -292,6 +289,84 @@ function flaggedSampleRow(row: AuditRow): string[] {
     compact(row.flagReasons.join("; ") || row.warnReasons.join("; "), 100),
     compact(row.remediationRequired ?? row.actionsRequired ?? row.risksActions ?? row.notes, 90),
   ];
+}
+
+function fieldDisplay(row: AuditRow, key: string): string {
+  const field = ASSET_CATEGORIES[row.auditCategory].fields.find((candidate) => candidate.key === key);
+  return field ? displayValue(field, row[key]) : text(row[key]);
+}
+
+function auditedItemsTable(section: CategoryReportSection): { headers: string[]; rows: string[][]; widths: number[] } {
+  if (section.slug === "data-infra") {
+    return {
+      headers: ["Item", "Type", "Manufacturer / Model", "OS / Hypervisor", "Role / Workload", "Lifecycle"],
+      rows: section.auditedRows.map((row) => [
+        compact(row.serverName, 34),
+        compact(fieldDisplay(row, "physicalVirtual"), 16),
+        compact([row.manufacturer, row.model].filter(Boolean).join(" · "), 34),
+        compact(row.osHypervisor, 30),
+        compact(row.roleWorkload, 38),
+        compact([fieldDisplay(row, "warrantyStatus"), row.endOfSupport, row.endOfServiceLife].filter((value) => value && value !== "—").join(" · "), 44),
+      ]),
+      widths: [120, 70, 125, 115, 145, 120],
+    };
+  }
+  if (section.slug === "network") {
+    return {
+      headers: ["Item", "Type", "Manufacturer / Model", "Firmware / Wi-Fi", "Location", "Lifecycle"],
+      rows: section.auditedRows.map((row) => [
+        compact(row.name, 34),
+        compact(fieldDisplay(row, "assetType"), 20),
+        compact([row.manufacturer, row.model].filter(Boolean).join(" · "), 34),
+        compact([row.firmwareVersion, row.wifiStandard].filter(Boolean).join(" · "), 32),
+        compact(row.location, 28),
+        compact([fieldDisplay(row, "warrantyStatus"), row.endOfSupport, row.endOfServiceLife].filter((value) => value && value !== "—").join(" · "), 44),
+      ]),
+      widths: [120, 82, 130, 120, 105, 138],
+    };
+  }
+  if (section.slug === "client-compute") {
+    return {
+      headers: ["Device category", "Manufacturer / Model", "Operating system", "Qty", "Owner / Location", "Priority / Lifecycle"],
+      rows: section.auditedRows.map((row) => [
+        compact(row.deviceCategory, 36),
+        compact([row.manufacturer, row.model].filter(Boolean).join(" · "), 34),
+        compact(row.operatingSystem, 30),
+        compact(row.quantity, 8),
+        compact([row.ownerDepartment, row.location].filter(Boolean).join(" · "), 34),
+        compact([fieldDisplay(row, "replacementPriority"), fieldDisplay(row, "warrantyStatus"), row.endOfSupport].filter((value) => value && value !== "—").join(" · "), 42),
+      ]),
+      widths: [130, 130, 120, 45, 130, 140],
+    };
+  }
+  if (section.slug === "software") {
+    return {
+      headers: ["Software / System", "Category", "Supplier", "Purpose", "Deployment", "Owner", "Renewal / Support"],
+      rows: section.auditedRows.map((row) => [
+        compact(row.softwareSystem, 42),
+        compact(row.category, 24),
+        compact(row.supplier, 28),
+        compact(row.purpose, 54),
+        compact(fieldDisplay(row, "deploymentModel"), 20),
+        compact(row.owner, 24),
+        compact([row.contractRenewalDate, fieldDisplay(row, "supportStatus")].filter(Boolean).join(" · "), 38),
+      ]),
+      widths: [115, 75, 90, 150, 65, 80, 120],
+    };
+  }
+  return {
+    headers: ["Control", "Brilliant Basics", "Installed", "Solution / Supplier", "Coverage", "Status / Risk", "Evidence / Actions"],
+    rows: section.auditedRows.map((row) => [
+      compact(row.controlArea, 40),
+      compact(fieldDisplay(row, "partOfBrilliantBasics"), 12),
+      compact(fieldDisplay(row, "installed"), 12),
+      compact(row.solutionSupplier, 38),
+      compact(row.coverage, 38),
+      compact([fieldDisplay(row, "status"), fieldDisplay(row, "riskRating")].filter((value) => value !== "—").join(" · "), 30),
+      compact([row.evidenceNotes, row.actionsRequired].filter(Boolean).join(" · "), 55),
+    ]),
+    widths: [135, 55, 55, 120, 110, 90, 130],
+  };
 }
 
 export async function exportFullAuditReport(audit: BrowserAudit, clientName: string) {
@@ -579,6 +654,39 @@ export async function exportFullAuditReport(audit: BrowserAudit, clientName: str
       flagNoteY + 38,
     );
 
+    {
+      const auditedItems = auditedItemsTable(section);
+      const listDescription = section.auditedRowsComplete
+        ? `Complete audited list — all ${section.total} imported item(s) are shown.`
+        : `Representative audited list — ${section.auditedRows.length} examples shown from ${section.total} item(s); see the raw workbook for the complete inventory.`;
+      y = newPage(`${section.label} — audited items`, `${clientName} · one-page audited-item list`, color);
+      doc.setTextColor(...BRAND.navy);
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(10);
+      doc.text(listDescription, margin, y);
+      autoTable(doc, {
+        startY: y + 12,
+        head: [auditedItems.headers],
+        body: auditedItems.rows,
+        theme: "grid",
+        headStyles: { fillColor: color, textColor: section.slug === "network" || section.slug === "cyber" ? BRAND.navy : BRAND.white, fontSize: 7.1 },
+        bodyStyles: { fontSize: 6.5, cellPadding: 2.4, valign: "top", overflow: "linebreak" },
+        margin: { left: margin, right: margin, top: 100 },
+        columnStyles: Object.fromEntries(auditedItems.widths.map((cellWidth, index) => [index, { cellWidth }])),
+        rowPageBreak: "avoid",
+      });
+      doc.setTextColor(...BRAND.slate);
+      doc.setFont("helvetica", "italic");
+      doc.setFontSize(8);
+      doc.text(
+        section.auditedRowsComplete
+          ? `All ${section.total} audited ${section.label.toLowerCase()} item(s) are included on this page.`
+          : `${section.auditedRows.length} representative examples shown from ${section.total} audited item(s); the raw workbook contains the complete list.`,
+        margin,
+        pageHeight - 24,
+      );
+    }
+
     y = newPage(`${section.label} — example flagged items`, `${clientName} · representative flagged detail limited to one page`, BRAND.pink);
     doc.setTextColor(...BRAND.navy);
     doc.setFont("helvetica", "bold");
@@ -618,26 +726,6 @@ export async function exportFullAuditReport(audit: BrowserAudit, clientName: str
     drawStrategyCard(margin + roadmapWidth + 18, 266, roadmapWidth, 205, "12 months", section.plan12Months, BRAND.white);
     drawStrategyCard(margin + (roadmapWidth + 18) * 2, 266, roadmapWidth, 205, "2 years", section.plan2Years, BRAND.white);
   }
-
-  y = newPage("Representative Audited Items", `${clientName} · example inventory only`, BRAND.cyan);
-  doc.setTextColor(...BRAND.navy);
-  doc.setFont("helvetica", "bold");
-  doc.setFontSize(10);
-  doc.text("Representative/example list — the raw workbook contains the complete audited inventory.", margin, y);
-  autoTable(doc, {
-    startY: y + 12,
-    head: [["Category", "Item", "Workbook section", "Representative detail", "Lifecycle / priority"]],
-    body: model.inventorySample.map(inventorySampleRow),
-    theme: "grid",
-    headStyles: { fillColor: BRAND.cyan, textColor: BRAND.navy, fontSize: 7.5 },
-    bodyStyles: { fontSize: 6.7, cellPadding: 2.6, valign: "top", overflow: "linebreak" },
-    margin: { left: margin, right: margin, top: 100 },
-    columnStyles: { 0: { cellWidth: 92 }, 1: { cellWidth: 120 }, 2: { cellWidth: 95 }, 3: { cellWidth: 260 }, 4: { cellWidth: 105 } },
-  });
-  doc.setTextColor(...BRAND.slate);
-  doc.setFont("helvetica", "italic");
-  doc.setFontSize(8);
-  doc.text(`${model.inventorySample.length} examples shown from the Data Infrastructure, Network and Client Compute inventories.`, margin, pageHeight - 24);
 
   downloadBlob(
     doc.output("blob"),
