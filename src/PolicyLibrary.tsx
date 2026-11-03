@@ -14,7 +14,6 @@ function save(blob: Blob, name: string) {
 
 export function PolicyLibrary({ clientName, onClientName }: { clientName: string; onClientName: (v: string) => void }) {
   const [details, setDetails] = React.useState<Details>(() => ({ business: clientName, date: new Date().toLocaleDateString("en-GB"), owner: "", email: "", phone: "" }));
-  const [reviewed, setReviewed] = React.useState<Record<string, boolean>>({});
   const [busy, setBusy] = React.useState<string | null>(null);
   const [error, setError] = React.useState("");
   const [notice, setNotice] = React.useState("");
@@ -89,19 +88,6 @@ export function PolicyLibrary({ clientName, onClientName }: { clientName: string
                       <p className="mt-0.5 text-sm font-semibold text-slate-500">{doc.description}</p>
                     </div>
                   </div>
-                  <ul className="mt-3 space-y-1">
-                    {doc.review.map((r, i) => {
-                      const id = `${doc.file}:${i}`;
-                      return (
-                        <li key={id}>
-                          <label className="flex items-start gap-2 text-sm font-semibold text-slate-700">
-                            <input type="checkbox" checked={!!reviewed[id]} onChange={(e) => setReviewed((s) => ({ ...s, [id]: e.target.checked }))} className="mt-1" />
-                            {r}
-                          </label>
-                        </li>
-                      );
-                    })}
-                  </ul>
                   <div className="mt-4 flex flex-wrap gap-2">
                     {canFill && (
                       <button disabled={busy === doc.file || !details.business.trim()} title={details.business.trim() ? "" : "Enter a business name above first"} onClick={() => void download(doc, true)} className="inline-flex items-center gap-2 rounded-xl bg-[#7E3AED] px-4 py-2 text-sm font-black text-white shadow-sm hover:bg-[#6B2FD0] disabled:cursor-not-allowed disabled:opacity-50">
