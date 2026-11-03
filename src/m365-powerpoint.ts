@@ -100,6 +100,43 @@ export async function exportM365PowerPoint(state: M365State, clientName: string)
   ]), { x: 0.55, y: 3.6, w: 12.2, colW: [3, 1.8, 1.6, 1.8, 2, 2], rowH: 0.4, fontSize: 10 });
   footer(scores, estimate);
 
+  const dash2 = pptx.addSlide();
+  addHeader(dash2, "Secure Score dashboard", sub, COLORS.cyan);
+  const dial = (x: number, value: number, label: string, caption: string) => {
+    const v = Math.max(0, Math.min(100, Math.round(value)));
+    const color = v >= 75 ? "059669" : v >= 50 ? "F59E0B" : "B91C1C";
+    dash2.addShape(pptx.ShapeType.roundRect, { x, y: 1.3, w: 3.95, h: 1.75, rectRadius: 0.06, fill: { color: COLORS.white }, line: { color: COLORS.line, pt: 1 } });
+    dash2.addChart(pptx.ChartType.doughnut, [{ name: label, labels: [label, "Remaining"], values: [v, 100 - v] }], { x: x + 0.12, y: 1.38, w: 1.6, h: 1.6, holeSize: 72, chartColors: [color, "E2E8F0"], showLegend: false, showLabel: false, showValue: false, showPercent: false, dataBorder: { pt: 0, color: "FFFFFF" } });
+    dash2.addText(`${v}%`, { x: x + 0.12, y: 1.9, w: 1.6, h: 0.5, align: "center", bold: true, fontSize: 20, color, margin: 0 });
+    dash2.addText(label, { x: x + 1.85, y: 1.75, w: 1.95, h: 0.3, bold: true, fontSize: 13, color: COLORS.navy, margin: 0 });
+    dash2.addText(caption, { x: x + 1.85, y: 2.1, w: 1.95, h: 0.6, fontSize: 9, color: COLORS.slate, valign: "top", margin: 0 });
+  };
+  dial(0.55, sc.overall.current, "Current", "Secure Score today");
+  dial(4.675, sc.overall.priority, "After priorities", `+${(sc.overall.priority - sc.overall.current).toFixed(1)} points if priority items are done`);
+  dial(8.8, sc.overall.all, "After all", `+${(sc.overall.all - sc.overall.current).toFixed(1)} points if all items are done`);
+  const card = (x: number, w: number, heading: string) => {
+    dash2.addShape(pptx.ShapeType.roundRect, { x, y: 3.2, w, h: 3.8, rectRadius: 0.06, fill: { color: COLORS.white }, line: { color: COLORS.line, pt: 1 } });
+    dash2.addText(heading, { x: x + 0.25, y: 3.32, w: w - 0.5, h: 0.3, bold: true, fontSize: 14, color: COLORS.navy, margin: 0 });
+  };
+  card(0.55, 7.4, "Secure Score by area");
+  card(8.2, 4.55, "Control status");
+  const areas = [...sc.pillars].reverse();
+  dash2.addChart(pptx.ChartType.bar, [
+    { name: "After all", labels: areas.map((p) => p.pillar), values: areas.map((p) => Math.round(p.all * 10) / 10) },
+    { name: "After priorities", labels: areas.map((p) => p.pillar), values: areas.map((p) => Math.round(p.priority * 10) / 10) },
+    { name: "Current", labels: areas.map((p) => p.pillar), values: areas.map((p) => Math.round(p.current * 10) / 10) },
+  ], { x: 0.7, y: 3.65, w: 7.1, h: 3.3, barDir: "bar", barGrouping: "clustered", chartColors: ["00D4FF", "7E3AED", "FF2AA0"], valAxisMinVal: 0, valAxisMaxVal: 100, showValue: true, dataLabelFontSize: 8, dataLabelFormatCode: "0\"%\"", showLegend: true, legendPos: "b", legendFontSize: 9, catAxisLabelFontSize: 10, valAxisLabelFontSize: 9, valGridLine: { color: "E2E8F0", size: 0.5 }, barGapWidthPct: 50 });
+  const status = { inPlace: 0, partial: 0, notIn: 0, other: 0 };
+  let totalControls = 0;
+  for (const section of CONTROL_SECTIONS) {
+    const c = controlSummary(state, section);
+    status.inPlace += c["In place"]; status.partial += c["Partially in place"]; status.notIn += c["Not in place"];
+    totalControls += section.controls.length;
+  }
+  status.other = totalControls - status.inPlace - status.partial - status.notIn;
+  dash2.addChart(pptx.ChartType.doughnut, [{ name: "Controls", labels: ["In place", "Partially in place", "Not in place", "Not assessed / other"], values: [status.inPlace, status.partial, status.notIn, Math.max(0, status.other)] }], { x: 8.35, y: 3.65, w: 4.25, h: 3.3, holeSize: 55, chartColors: ["059669", "F59E0B", "B91C1C", "94A3B8"], showLegend: true, legendPos: "b", legendFontSize: 9, showPercent: false, showValue: true, dataLabelColor: COLORS.white, dataLabelFontSize: 10, dataBorder: { pt: 1, color: "FFFFFF" } });
+  footer(dash2, estimate);
+
   for (const section of CONTROL_SECTIONS) {
     const counts = controlSummary(state, section);
     const slide = pptx.addSlide();

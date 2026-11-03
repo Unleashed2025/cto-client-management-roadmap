@@ -176,6 +176,68 @@ export async function exportCompliancePowerPoint(
   summary.addText(`${benchmark.notice}\n\nOfficial source: ${benchmark.sourceUrl}`, { x: 5.35, y: 4.95, w: 7.05, h: 1.05, fontSize: 10, color: COLORS.slate, breakLine: false, margin: 0 });
   addFooter(summary, "All content is editable. Validate findings against the authoritative framework and independent assessor requirements.");
 
+  const charts = pptx.addSlide();
+  addHeader(charts, "Results at a Glance", `${clientName} · ${benchmark.title} · ${assessmentLabel}`, COLORS.cyan);
+  const panel = (x: number, w: number, title: string) => {
+    charts.addShape(pptx.ShapeType.roundRect, { x, y: 3.2, w, h: 3.8, rectRadius: 0.06, fill: { color: COLORS.white }, line: { color: COLORS.line, pt: 1 } });
+    charts.addText(title, { x: x + 0.25, y: 3.32, w: w - 0.5, h: 0.3, bold: true, fontSize: 14, color: COLORS.navy, margin: 0 });
+  };
+  const labelFont = { catAxisLabelFontSize: 9, valAxisLabelFontSize: 9, catAxisLabelColor: "334155", valAxisLabelColor: "64748B", valGridLine: { color: "E2E8F0", size: 0.5 }, catGridLine: { style: "none" as const } };
+  const dial = (x: number, value: number, title: string, caption: string) => {
+    const v = Math.max(0, Math.min(100, Math.round(value)));
+    const color = v >= 75 ? "059669" : v >= 50 ? "F59E0B" : "B91C1C";
+    charts.addShape(pptx.ShapeType.roundRect, { x, y: 1.3, w: 3.95, h: 1.75, rectRadius: 0.06, fill: { color: COLORS.white }, line: { color: COLORS.line, pt: 1 } });
+    charts.addChart(pptx.ChartType.doughnut, [{ name: title, labels: [title, "Remaining"], values: [v, 100 - v] }], {
+      x: x + 0.12, y: 1.38, w: 1.6, h: 1.6, holeSize: 72, chartColors: [color, "E2E8F0"], showLegend: false, showLabel: false, showValue: false, showPercent: false, dataBorder: { pt: 0, color: "FFFFFF" },
+    });
+    charts.addText(`${v}%`, { x: x + 0.12, y: 1.9, w: 1.6, h: 0.5, align: "center", bold: true, fontSize: 20, color, margin: 0 });
+    charts.addText(title, { x: x + 1.85, y: 1.75, w: 1.95, h: 0.3, bold: true, fontSize: 13, color: COLORS.navy, margin: 0 });
+    charts.addText(caption, { x: x + 1.85, y: 2.1, w: 1.95, h: 0.6, fontSize: 9, color: COLORS.slate, valign: "top", margin: 0 });
+  };
+  const pctOf = (part: number, whole: number) => (whole > 0 ? (part / whole) * 100 : 0);
+  if (aiResult) {
+    dial(0.55, aiResult.percent, "Readiness", "Weighted AI-readiness score");
+    dial(4.675, pctOf(aiResult.scored, questions.length), "Completion", `${aiResult.scored} of ${questions.length} controls scored`);
+    dial(8.8, pctOf(aiResult.scored - aiResult.belowMinimum, aiResult.scored), "At / above minimum", `${aiResult.belowMinimum} control(s) below the minimum`);
+  } else {
+    dial(0.55, readiness, "Readiness", "Pass = 1, partial = 0.5 of applicable");
+    dial(4.675, pctOf(assessed, questions.length), "Completion", `${assessed} of ${questions.length} questions assessed`);
+    dial(8.8, pctOf(counts.pass, applicable), "Pass rate", `${counts.pass} of ${applicable} applicable passed`);
+  }
+  const shortSection = (name: string) => (name.length > 34 ? `${name.slice(0, 33)}…` : name);
+  panel(0.55, 4.6, maturity ? "Score distribution" : "Result breakdown");
+  panel(5.4, 7.35, maturity ? "Average score by section (0–5)" : "Results by section");
+  if (maturity) {
+    const bands = [0, 1, 2, 3, 4, 5].map((value) => questions.filter((question) => responses[question.id]?.score === value).length);
+    charts.addChart(pptx.ChartType.doughnut, [{ name: "Controls", labels: ["0", "1", "2", "3", "4", "5"].map((v) => `Score ${v}`), values: bands }], {
+      x: 0.7, y: 3.65, w: 4.3, h: 3.3, holeSize: 55, chartColors: ["B91C1C", "F97316", "F59E0B", "84CC16", "10B981", "059669"],
+      showLegend: true, legendPos: "b", legendFontSize: 9, showPercent: false, showValue: true, dataLabelColor: COLORS.white, dataLabelFontSize: 10, dataBorder: { pt: 1, color: "FFFFFF" },
+    });
+    const sectionData = [...(aiResult?.sectionScores ?? [])].reverse();
+    charts.addChart(pptx.ChartType.bar, [{ name: "Average", labels: sectionData.map((item) => shortSection(item.section)), values: sectionData.map((item) => item.average ?? 0) }], {
+      x: 5.55, y: 3.65, w: 7.05, h: 3.3, barDir: "bar", valAxisMinVal: 0, valAxisMaxVal: 5, valAxisMajorUnit: 1,
+      chartColors: sectionData.map((item) => ((item.average ?? 0) >= 4 ? "059669" : (item.average ?? 0) >= 2.5 ? "F59E0B" : "B91C1C")),
+      showValue: true, dataLabelFontSize: 9, dataLabelFormatCode: "0.0", barGapWidthPct: 45, showLegend: false, ...labelFont,
+    });
+  } else {
+    charts.addChart(pptx.ChartType.doughnut, [{ name: "Results", labels: ["Pass", "Partial", "Fail", "Not assessed", "Not applicable"], values: [counts.pass, counts.partial, counts.fail, counts["not-assessed"], counts["not-applicable"]] }], {
+      x: 0.7, y: 3.65, w: 4.3, h: 3.3, holeSize: 55, chartColors: ["059669", "F59E0B", "B91C1C", "94A3B8", "CBD5E1"],
+      showLegend: true, legendPos: "b", legendFontSize: 9, showPercent: false, showValue: true, dataLabelColor: COLORS.white, dataLabelFontSize: 10, dataBorder: { pt: 1, color: "FFFFFF" },
+    });
+    const rev = [...sections].reverse();
+    const perSection = (answer: AssessmentAnswer) => rev.map((section) => questions.filter((question) => question.section === section && (responses[question.id]?.answer ?? "not-assessed") === answer).length);
+    charts.addChart(pptx.ChartType.bar, [
+      { name: "Pass", labels: rev.map(shortSection), values: perSection("pass") },
+      { name: "Partial", labels: rev.map(shortSection), values: perSection("partial") },
+      { name: "Fail", labels: rev.map(shortSection), values: perSection("fail") },
+      { name: "Not assessed", labels: rev.map(shortSection), values: perSection("not-assessed") },
+    ], {
+      x: 5.55, y: 3.65, w: 7.05, h: 3.3, barDir: "bar", barGrouping: "stacked", chartColors: ["059669", "F59E0B", "B91C1C", "94A3B8"],
+      showLegend: true, legendPos: "b", legendFontSize: 9, barGapWidthPct: 40, ...labelFont,
+    });
+  }
+  addFooter(charts, "Charts are native PowerPoint objects — right-click to edit data or restyle.");
+
   if (maturity) {
     const orgSlide = pptx.addSlide();
     addHeader(orgSlide, "Organisation Information", `${clientName} · ${benchmark.title}`, COLORS.cyan);
