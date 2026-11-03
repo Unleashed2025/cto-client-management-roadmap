@@ -60,6 +60,9 @@ import {
 import { MspRegister } from "./MspRegister";
 import { BcdrCatalogue } from "./BcdrCatalogue";
 import { PolicyLibrary } from "./PolicyLibrary";
+import { M365Hardening } from "./M365Hardening";
+import { exportM365PowerPoint } from "./m365-powerpoint";
+import { emptyM365, type M365State } from "./m365-hardening";
 import { exportBcdrPowerPoint } from "./bcdr-powerpoint";
 import type { BcdrApp } from "./bcdr-catalogue";
 import { EMPTY_MSP_EXTRAS, MSP_IMPORTANCE, MSP_POSITIONS, MSP_SECTION_CAPTURE, mspSectionNotesKey, type MspQuestionExtras, type ServiceRow } from "./msp-review";
@@ -668,20 +671,16 @@ function ServicesHub({
   onCopilotWorkshop,
   onBcdr,
   onPolicies,
+  onM365,
   onBenchmark,
 }: {
   onAudit: () => void;
   onCopilotWorkshop: () => void;
   onBcdr: () => void;
   onPolicies: () => void;
+  onM365: () => void;
   onBenchmark: (id: BenchmarkId) => void;
 }) {
-  const futureService = (title: string) => (
-    <div className="flex items-center justify-between gap-4 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3.5 text-left">
-      <span className="text-sm font-bold text-slate-500">{title}</span>
-      <span className="shrink-0 rounded-full bg-slate-200 px-2.5 py-1 text-[9px] font-black uppercase tracking-[0.12em] text-slate-500">Coming later</span>
-    </div>
-  );
   const serviceButton = (title: string, onClick: () => void) => (
     <button onClick={onClick} className="group flex w-full items-center justify-between gap-4 rounded-2xl border border-slate-200 bg-white px-4 py-3.5 text-left shadow-sm transition hover:-translate-y-0.5 hover:border-[#7E3AED]/40 hover:shadow-md">
       <span className="text-sm font-black text-slate-800">{title}</span>
@@ -735,7 +734,7 @@ function ServicesHub({
             {serviceButton("Cyber Essentials Readiness", () => onBenchmark("cyber-essentials"))}
             {serviceButton("Cyber Essentials Plus Alignment", () => onBenchmark("cyber-essentials-plus"))}
             {serviceButton("ISO 27001 — Gap Analysis", () => onBenchmark("iso-27001"))}
-            {futureService("M365 Tenancy Hardening")}
+            {serviceButton("M365 Tenancy Hardening", onM365)}
             {serviceButton("Core IT Policy Review and Creation", onPolicies)}
           </div>
         </section>
@@ -806,7 +805,9 @@ function EmptyUpload({ onFile, onBlank }: { onFile: (file: File | null) => void;
 
 export function AuditBuilder() {
   const [showHub, setShowHub] = React.useState(true);
-  const [embeddedService, setEmbeddedService] = React.useState<"copilot-workshop" | "bcdr" | "policies" | null>(null);
+  const [embeddedService, setEmbeddedService] = React.useState<"copilot-workshop" | "bcdr" | "policies" | "m365" | null>(null);
+  const [m365, setM365] = React.useState<M365State>(emptyM365);
+  const [m365Exporting, setM365Exporting] = React.useState(false);
   const [bcdrApps, setBcdrApps] = React.useState<BcdrApp[]>([]);
   const [bcdrActive, setBcdrActive] = React.useState<string | null>(null);
   const [bcdrExporting, setBcdrExporting] = React.useState(false);
@@ -889,6 +890,24 @@ export function AuditBuilder() {
     setShowHub(false);
     navigate(`compliance:${benchmarkId}`);
     setStatus(`${BENCHMARKS[benchmarkId].shortTitle} assessment opened. Results remain in this browser tab.`);
+  }
+
+  function openM365() {
+    setEmbeddedService("m365");
+    setShowHub(false);
+    setStatus("M365 Tenancy Hardening opened. Results remain in this browser tab.");
+  }
+
+  async function exportM365() {
+    setM365Exporting(true);
+    try {
+      await exportM365PowerPoint(m365, m365.tenant.org || clientName);
+    } catch (error) {
+      console.error(error);
+      setStatus("Unable to generate the Microsoft 365 Security Assessment PowerPoint.");
+    } finally {
+      setM365Exporting(false);
+    }
   }
 
   function openPolicies() {
@@ -1033,7 +1052,7 @@ export function AuditBuilder() {
             <div className="hidden h-10 w-px bg-white/20 sm:block" />
             <div>
               <p className="text-[10px] font-black uppercase tracking-[0.28em] text-[#00D4FF]">{showHub ? "Fractional CTO & CISO services" : activeBenchmark ? "Fractional CISO assessment" : "Fractional CTO service"}</p>
-              <h1 className="mt-1 text-2xl font-black tracking-[-0.04em]">{showHub ? "Fractional C-Suite Services Hub" : embeddedService === "copilot-workshop" ? "Microsoft Copilot Adoption Workshop" : embeddedService === "bcdr" ? "Backup, DR & Business Continuity Assessment" : embeddedService === "policies" ? "Core IT Policy Review and Creation" : activeBenchmark?.title ?? "Client Audit Asset Management"}</h1>
+              <h1 className="mt-1 text-2xl font-black tracking-[-0.04em]">{showHub ? "Fractional C-Suite Services Hub" : embeddedService === "copilot-workshop" ? "Microsoft Copilot Adoption Workshop" : embeddedService === "bcdr" ? "Backup, DR & Business Continuity Assessment" : embeddedService === "policies" ? "Core IT Policy Review and Creation" : embeddedService === "m365" ? "M365 Tenancy Hardening" : activeBenchmark?.title ?? "Client Audit Asset Management"}</h1>
             </div>
           </div>
           <div className="flex flex-wrap items-center gap-2">
@@ -1078,7 +1097,9 @@ export function AuditBuilder() {
       </header>
 
       {showHub ? (
-        <ServicesHub onAudit={openAuditService} onCopilotWorkshop={openCopilotWorkshop} onBcdr={openBcdr} onPolicies={openPolicies} onBenchmark={openBenchmarkService} />
+        <ServicesHub onAudit={openAuditService} onCopilotWorkshop={openCopilotWorkshop} onBcdr={openBcdr} onPolicies={openPolicies} onM365={openM365} onBenchmark={openBenchmarkService} />
+      ) : embeddedService === "m365" ? (
+        <M365Hardening state={m365} onChange={setM365} onExport={() => void exportM365()} exporting={m365Exporting} />
       ) : embeddedService === "policies" ? (
         <PolicyLibrary clientName={clientName} onClientName={setClientName} />
       ) : embeddedService === "bcdr" ? (
