@@ -57,6 +57,8 @@ import {
   type AiFinding,
   type AiScoreValue,
 } from "./ai-data-readiness";
+import { MspRegister } from "./MspRegister";
+import type { ServiceRow } from "./msp-review";
 
 type ViewKey = "overview" | "high-level" | "compliance-overview" | `compliance:${BenchmarkId}` | AssetCategorySlug;
 type BenchmarkResponse = { answer: AssessmentAnswer; evidence: string; score?: AiScoreValue; finding?: Partial<AiFinding> };
@@ -677,7 +679,7 @@ function ServicesHub({
             </button>
             {serviceButton("AI Data Readiness", () => onBenchmark("ai-data-readiness"))}
             {futureService("Back-up and Business Continuity Assessment")}
-            {futureService("MSP / IT Services Evaluation")}
+            {serviceButton("MSP / IT Services Evaluation", () => onBenchmark("msp-supplier-review"))}
           </div>
         </section>
 
@@ -772,6 +774,7 @@ export function AuditBuilder() {
   const [addCategory, setAddCategory] = React.useState<AssetCategorySlug | null>(null);
   const [presenting, setPresenting] = React.useState(false);
   const [benchmarkResponses, setBenchmarkResponses] = React.useState<Partial<Record<BenchmarkId, BenchmarkResponseSet>>>({});
+  const [serviceRows, setServiceRows] = React.useState<ServiceRow[]>([]);
   const [organisation, setOrganisation] = React.useState<OrganisationValues>({});
   const [assessmentDepth, setAssessmentDepth] = React.useState<AssessmentDepth>("pre");
   const [cisTier, setCisTier] = React.useState<1 | 2 | 3>(1);
@@ -1013,6 +1016,7 @@ export function AuditBuilder() {
       ) : activeBenchmark && activeBenchmarkId ? (
         <div className="mx-auto max-w-[1600px] space-y-5 px-5 py-6">
           <p className="rounded-2xl bg-white/80 px-5 py-3 text-sm font-bold text-slate-600 shadow-sm ring-1 ring-[#D9E7F5]">{status}</p>
+          {activeBenchmarkId === "msp-supplier-review" && <MspRegister rows={serviceRows} onChange={setServiceRows} />}
           <ComplianceAssessment
             key={activeBenchmarkId}
             benchmark={activeBenchmark}
