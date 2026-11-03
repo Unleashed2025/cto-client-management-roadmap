@@ -58,6 +58,9 @@ import {
   type AiScoreValue,
 } from "./ai-data-readiness";
 import { MspRegister } from "./MspRegister";
+import { BcdrCatalogue } from "./BcdrCatalogue";
+import { exportBcdrPowerPoint } from "./bcdr-powerpoint";
+import type { BcdrApp } from "./bcdr-catalogue";
 import { EMPTY_MSP_EXTRAS, MSP_IMPORTANCE, MSP_POSITIONS, MSP_SECTION_CAPTURE, mspSectionNotesKey, type MspQuestionExtras, type ServiceRow } from "./msp-review";
 
 type ViewKey = "overview" | "high-level" | "compliance-overview" | `compliance:${BenchmarkId}` | AssetCategorySlug;
@@ -662,10 +665,12 @@ function RemediationRoadmap({ findings }: { findings: ReturnType<typeof collectA
 function ServicesHub({
   onAudit,
   onCopilotWorkshop,
+  onBcdr,
   onBenchmark,
 }: {
   onAudit: () => void;
   onCopilotWorkshop: () => void;
+  onBcdr: () => void;
   onBenchmark: (id: BenchmarkId) => void;
 }) {
   const futureService = (title: string) => (
@@ -711,7 +716,7 @@ function ServicesHub({
               <ChevronRight className="size-4 shrink-0 text-[#00A6C7] transition group-hover:translate-x-0.5" />
             </button>
             {serviceButton("AI Data Readiness", () => onBenchmark("ai-data-readiness"))}
-            {futureService("Back-up and Business Continuity Assessment")}
+            {serviceButton("Back-up and Business Continuity Assessment", onBcdr)}
             {serviceButton("MSP / IT Services Evaluation", () => onBenchmark("msp-supplier-review"))}
           </div>
         </section>
@@ -798,7 +803,10 @@ function EmptyUpload({ onFile, onBlank }: { onFile: (file: File | null) => void;
 
 export function AuditBuilder() {
   const [showHub, setShowHub] = React.useState(true);
-  const [embeddedService, setEmbeddedService] = React.useState<"copilot-workshop" | null>(null);
+  const [embeddedService, setEmbeddedService] = React.useState<"copilot-workshop" | "bcdr" | null>(null);
+  const [bcdrApps, setBcdrApps] = React.useState<BcdrApp[]>([]);
+  const [bcdrActive, setBcdrActive] = React.useState<string | null>(null);
+  const [bcdrExporting, setBcdrExporting] = React.useState(false);
   const [audit, setAudit] = React.useState<BrowserAudit | null>(null);
   const [clientName, setClientName] = React.useState("Temporary audit");
   const [activeView, setActiveView] = React.useState<ViewKey>("overview");
@@ -878,6 +886,24 @@ export function AuditBuilder() {
     setShowHub(false);
     navigate(`compliance:${benchmarkId}`);
     setStatus(`${BENCHMARKS[benchmarkId].shortTitle} assessment opened. Results remain in this browser tab.`);
+  }
+
+  function openBcdr() {
+    setEmbeddedService("bcdr");
+    setShowHub(false);
+    setStatus("Backup, DR & Business Continuity Assessment opened. Results remain in this browser tab.");
+  }
+
+  async function exportBcdr() {
+    setBcdrExporting(true);
+    try {
+      await exportBcdrPowerPoint(bcdrApps, clientName);
+    } catch (error) {
+      console.error(error);
+      setStatus("Unable to generate the Backup, DR & Business Continuity PowerPoint.");
+    } finally {
+      setBcdrExporting(false);
+    }
   }
 
   function openCopilotWorkshop() {
@@ -998,7 +1024,7 @@ export function AuditBuilder() {
             <div className="hidden h-10 w-px bg-white/20 sm:block" />
             <div>
               <p className="text-[10px] font-black uppercase tracking-[0.28em] text-[#00D4FF]">{showHub ? "Fractional CTO & CISO services" : activeBenchmark ? "Fractional CISO assessment" : "Fractional CTO service"}</p>
-              <h1 className="mt-1 text-2xl font-black tracking-[-0.04em]">{showHub ? "Fractional C-Suite Services Hub" : embeddedService === "copilot-workshop" ? "Microsoft Copilot Adoption Workshop" : activeBenchmark?.title ?? "Client Audit Asset Management"}</h1>
+              <h1 className="mt-1 text-2xl font-black tracking-[-0.04em]">{showHub ? "Fractional C-Suite Services Hub" : embeddedService === "copilot-workshop" ? "Microsoft Copilot Adoption Workshop" : embeddedService === "bcdr" ? "Backup, DR & Business Continuity Assessment" : activeBenchmark?.title ?? "Client Audit Asset Management"}</h1>
             </div>
           </div>
           <div className="flex flex-wrap items-center gap-2">
@@ -1043,7 +1069,17 @@ export function AuditBuilder() {
       </header>
 
       {showHub ? (
-        <ServicesHub onAudit={openAuditService} onCopilotWorkshop={openCopilotWorkshop} onBenchmark={openBenchmarkService} />
+        <ServicesHub onAudit={openAuditService} onCopilotWorkshop={openCopilotWorkshop} onBcdr={openBcdr} onBenchmark={openBenchmarkService} />
+      ) : embeddedService === "bcdr" ? (
+        <div>
+          <div className="mx-auto max-w-[1600px] px-5 pt-6">
+            <label className="inline-flex items-center gap-2 rounded-xl bg-white px-4 py-2.5 text-sm font-bold shadow-sm ring-1 ring-[#D9E7F5]">
+              Client name
+              <input value={clientName} onChange={(event) => setClientName(event.target.value)} className="w-64 bg-transparent font-black text-slate-800 outline-none" />
+            </label>
+          </div>
+          <BcdrCatalogue apps={bcdrApps} onChange={setBcdrApps} activeId={bcdrActive} onActiveChange={setBcdrActive} onExport={() => void exportBcdr()} exporting={bcdrExporting} />
+        </div>
       ) : embeddedService === "copilot-workshop" ? (
         <EmbeddedCopilotWorkshop onBack={() => setShowHub(true)} />
       ) : activeBenchmark && activeBenchmarkId ? (
