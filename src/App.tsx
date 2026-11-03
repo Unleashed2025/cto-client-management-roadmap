@@ -59,6 +59,7 @@ import {
 } from "./ai-data-readiness";
 import { MspRegister } from "./MspRegister";
 import { BcdrCatalogue } from "./BcdrCatalogue";
+import { PolicyLibrary } from "./PolicyLibrary";
 import { exportBcdrPowerPoint } from "./bcdr-powerpoint";
 import type { BcdrApp } from "./bcdr-catalogue";
 import { EMPTY_MSP_EXTRAS, MSP_IMPORTANCE, MSP_POSITIONS, MSP_SECTION_CAPTURE, mspSectionNotesKey, type MspQuestionExtras, type ServiceRow } from "./msp-review";
@@ -666,11 +667,13 @@ function ServicesHub({
   onAudit,
   onCopilotWorkshop,
   onBcdr,
+  onPolicies,
   onBenchmark,
 }: {
   onAudit: () => void;
   onCopilotWorkshop: () => void;
   onBcdr: () => void;
+  onPolicies: () => void;
   onBenchmark: (id: BenchmarkId) => void;
 }) {
   const futureService = (title: string) => (
@@ -733,7 +736,7 @@ function ServicesHub({
             {serviceButton("Cyber Essentials Plus Alignment", () => onBenchmark("cyber-essentials-plus"))}
             {serviceButton("ISO 27001 — Gap Analysis", () => onBenchmark("iso-27001"))}
             {futureService("M365 Tenancy Hardening")}
-            {futureService("Core IT Policy Review and Creation")}
+            {serviceButton("Core IT Policy Review and Creation", onPolicies)}
           </div>
         </section>
       </div>
@@ -803,7 +806,7 @@ function EmptyUpload({ onFile, onBlank }: { onFile: (file: File | null) => void;
 
 export function AuditBuilder() {
   const [showHub, setShowHub] = React.useState(true);
-  const [embeddedService, setEmbeddedService] = React.useState<"copilot-workshop" | "bcdr" | null>(null);
+  const [embeddedService, setEmbeddedService] = React.useState<"copilot-workshop" | "bcdr" | "policies" | null>(null);
   const [bcdrApps, setBcdrApps] = React.useState<BcdrApp[]>([]);
   const [bcdrActive, setBcdrActive] = React.useState<string | null>(null);
   const [bcdrExporting, setBcdrExporting] = React.useState(false);
@@ -886,6 +889,12 @@ export function AuditBuilder() {
     setShowHub(false);
     navigate(`compliance:${benchmarkId}`);
     setStatus(`${BENCHMARKS[benchmarkId].shortTitle} assessment opened. Results remain in this browser tab.`);
+  }
+
+  function openPolicies() {
+    setEmbeddedService("policies");
+    setShowHub(false);
+    setStatus("Core IT Policy Review and Creation opened.");
   }
 
   function openBcdr() {
@@ -1024,7 +1033,7 @@ export function AuditBuilder() {
             <div className="hidden h-10 w-px bg-white/20 sm:block" />
             <div>
               <p className="text-[10px] font-black uppercase tracking-[0.28em] text-[#00D4FF]">{showHub ? "Fractional CTO & CISO services" : activeBenchmark ? "Fractional CISO assessment" : "Fractional CTO service"}</p>
-              <h1 className="mt-1 text-2xl font-black tracking-[-0.04em]">{showHub ? "Fractional C-Suite Services Hub" : embeddedService === "copilot-workshop" ? "Microsoft Copilot Adoption Workshop" : embeddedService === "bcdr" ? "Backup, DR & Business Continuity Assessment" : activeBenchmark?.title ?? "Client Audit Asset Management"}</h1>
+              <h1 className="mt-1 text-2xl font-black tracking-[-0.04em]">{showHub ? "Fractional C-Suite Services Hub" : embeddedService === "copilot-workshop" ? "Microsoft Copilot Adoption Workshop" : embeddedService === "bcdr" ? "Backup, DR & Business Continuity Assessment" : embeddedService === "policies" ? "Core IT Policy Review and Creation" : activeBenchmark?.title ?? "Client Audit Asset Management"}</h1>
             </div>
           </div>
           <div className="flex flex-wrap items-center gap-2">
@@ -1069,7 +1078,9 @@ export function AuditBuilder() {
       </header>
 
       {showHub ? (
-        <ServicesHub onAudit={openAuditService} onCopilotWorkshop={openCopilotWorkshop} onBcdr={openBcdr} onBenchmark={openBenchmarkService} />
+        <ServicesHub onAudit={openAuditService} onCopilotWorkshop={openCopilotWorkshop} onBcdr={openBcdr} onPolicies={openPolicies} onBenchmark={openBenchmarkService} />
+      ) : embeddedService === "policies" ? (
+        <PolicyLibrary clientName={clientName} onClientName={setClientName} />
       ) : embeddedService === "bcdr" ? (
         <div>
           <div className="mx-auto max-w-[1600px] px-5 pt-6">
