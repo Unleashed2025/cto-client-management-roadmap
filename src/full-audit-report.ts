@@ -70,6 +70,7 @@ export interface CategoryReportSection {
   flagged: number;
   warnings: number;
   groups: Array<{ label: string; total: number; flagged: number }>;
+  operatingSystems: Array<{ label: string; count: number }>;
   flaggedThemes: Array<{ label: string; count: number }>;
   flaggedSample: AuditRow[];
   whatThisMeans: string;
@@ -121,6 +122,24 @@ function flagTheme(reason: string): string {
   if (normalized.includes("core switch") || normalized.includes("firewall") || normalized.includes("availability") || normalized.includes("resilience")) return "Resilience";
   if (normalized.includes("cyber control") || normalized.includes("installed") || normalized.includes("implemented")) return "Control implementation";
   return "Other flagged condition";
+}
+
+function operatingSystemSummary(rows: AuditRow[], maximum = 6): Array<{ label: string; count: number }> {
+  const counts = new Map<string, { label: string; count: number }>();
+  for (const row of rows) {
+    const recordedValue = String(row.osHypervisor ?? "").trim();
+    const windowsServer = recordedValue.match(/^(?:microsoft\s+|windows\s+)?server\s+(20\d{2})(?:\s+(r2))?/i);
+    const label = windowsServer
+      ? `Windows Server ${windowsServer[1]}${windowsServer[2] ? " R2" : ""}`
+      : recordedValue || "Not recorded";
+    const key = label.toLowerCase();
+    const current = counts.get(key);
+    counts.set(key, { label: current?.label ?? label, count: (current?.count ?? 0) + 1 });
+  }
+  const sorted = [...counts.values()].sort((left, right) => right.count - left.count || left.label.localeCompare(right.label));
+  if (sorted.length <= maximum) return sorted;
+  const shown = sorted.slice(0, maximum - 1);
+  return [...shown, { label: "Other recorded operating systems", count: sorted.slice(maximum - 1).reduce((sum, item) => sum + item.count, 0) }];
 }
 
 function categoryNarrative(slug: AssetCategorySlug, total: number, flagged: number, warnings: number): Pick<CategoryReportSection, "whatThisMeans" | "whatIfNothing" | "plan3Months" | "plan12Months" | "plan2Years"> {
@@ -219,6 +238,7 @@ export function buildCategoryReportSections(audit: BrowserAudit): CategoryReport
         total: group.rows.length,
         flagged: group.rows.filter((row) => row.flagged).length,
       })),
+      operatingSystems: slug === "data-infra" ? operatingSystemSummary(rows) : [],
       flaggedThemes: [...rows.reduce((themes, row) => {
         if (!row.flagged) return themes;
         for (const reason of row.flagReasons) {
@@ -496,6 +516,8 @@ export async function exportFullAuditReport(audit: BrowserAudit, clientName: str
       doc.text(label.toUpperCase(), x + 12, y + 52);
     });
     y += 84;
+    const tableGap = 18;
+    const summaryTableWidth = (pageWidth - margin * 2 - tableGap) / 2;
     autoTable(doc, {
       startY: y,
       head: [["Breakdown", "Count", "Flagged", "Flag rate"]],
@@ -505,9 +527,11 @@ export async function exportFullAuditReport(audit: BrowserAudit, clientName: str
       theme: "grid",
       headStyles: { fillColor: color, textColor: section.slug === "network" ? BRAND.navy : BRAND.white, fontSize: 8.5 },
       bodyStyles: { fontSize: 8, cellPadding: 3 },
-      margin: { left: margin, right: margin },
+      tableWidth: summaryTableWidth,
+      margin: { left: margin },
+      rowPageBreak: "avoid",
     });
-    y = lastTableY() + 16;
+    const breakdownBottom = lastTableY();
     autoTable(doc, {
       startY: y,
       head: [["Flagged category", "Qty"]],
@@ -517,10 +541,28 @@ export async function exportFullAuditReport(audit: BrowserAudit, clientName: str
       theme: "grid",
       headStyles: { fillColor: BRAND.pink, textColor: BRAND.white, fontSize: 8.5 },
       bodyStyles: { fontSize: 8.5, cellPadding: 4 },
-      margin: { left: margin, right: margin },
-      columnStyles: { 0: { cellWidth: pageWidth - margin * 2 - 180 }, 1: { cellWidth: 180, halign: "center" } },
+      tableWidth: summaryTableWidth,
+      margin: { left: margin + summaryTableWidth + tableGap },
+      columnStyles: { 0: { cellWidth: summaryTableWidth - 72 }, 1: { cellWidth: 72, halign: "center" } },
+      rowPageBreak: "avoid",
     });
-    const flagNoteY = Math.min(lastTableY() + 16, pageHeight - 86);
+    let highlightsBottom = Math.max(breakdownBottom, lastTableY());
+    if (section.operatingSystems.length > 0) {
+      autoTable(doc, {
+        startY: highlightsBottom + 14,
+        head: [["Operating system type", "Qty"]],
+        body: section.operatingSystems.map((item) => [item.label, item.count]),
+        theme: "grid",
+        headStyles: { fillColor: BRAND.navy, textColor: BRAND.white, fontSize: 8.5 },
+        bodyStyles: { fontSize: 8, cellPadding: 3 },
+        tableWidth: pageWidth - margin * 2,
+        margin: { left: margin, right: margin },
+        columnStyles: { 0: { cellWidth: pageWidth - margin * 2 - 72 }, 1: { cellWidth: 72, halign: "center" } },
+        rowPageBreak: "avoid",
+      });
+      highlightsBottom = lastTableY();
+    }
+    const flagNoteY = Math.min(highlightsBottom + 12, pageHeight - 86);
     doc.setFillColor(...BRAND.white);
     doc.setDrawColor(217, 231, 245);
     doc.roundedRect(margin, flagNoteY, pageWidth - margin * 2, 52, 8, 8, "FD");

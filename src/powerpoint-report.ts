@@ -268,11 +268,20 @@ export async function exportPowerPointReport(audit: BrowserAudit, clientName: st
         : [["No flagged categories", "0"]],
       COLORS.pink,
     ), { x: 8.0, y: 2.45, w: 4.75, h: 2.9, colW: [3.45, 1.3], rowH: 0.39, fontSize: 9.5, margin: 0.06, border: { color: COLORS.line, pt: 1 }, autoPage: false });
-    highlights.addShape(pptx.ShapeType.roundRect, { x: 0.55, y: 5.55, w: 12.2, h: 0.92, rectRadius: 0.05, fill: { color: COLORS.white }, line: { color: COLORS.line, pt: 1 } });
-    highlights.addText("How to read these figures", { x: 0.8, y: 5.76, w: 2.65, h: 0.2, bold: true, fontSize: 10, color: COLORS.navy, margin: 0 });
+    let noteY = 5.55;
+    if (section.operatingSystems.length > 0) {
+      highlights.addTable(tableRows(
+        ["Operating system type", "Qty"],
+        section.operatingSystems.map((item) => [item.label, String(item.count)]),
+        COLORS.navy,
+      ), { x: 0.55, y: 4.42, w: 12.2, h: 1.75, colW: [11.0, 1.2], rowH: 0.25, fontSize: 7.8, margin: 0.035, border: { color: COLORS.line, pt: 0.8 }, autoPage: false });
+      noteY = 6.24;
+    }
+    highlights.addShape(pptx.ShapeType.roundRect, { x: 0.55, y: noteY, w: 12.2, h: 0.72, rectRadius: 0.05, fill: { color: COLORS.white }, line: { color: COLORS.line, pt: 1 } });
+    highlights.addText("How to read these figures", { x: 0.8, y: noteY + 0.19, w: 2.65, h: 0.2, bold: true, fontSize: 10, color: COLORS.navy, margin: 0 });
     highlights.addText(
       `The ${section.flagged} flagged figure is the number of unique items. Category quantities may total more because one item can have multiple flag reasons.`,
-      { x: 3.05, y: 5.72, w: 9.35, h: 0.3, fontSize: 10, color: COLORS.slate, margin: 0, breakLine: false },
+      { x: 3.05, y: noteY + 0.16, w: 9.35, h: 0.3, fontSize: 10, color: COLORS.slate, margin: 0, breakLine: false },
     );
     addFooter(highlights, "Counts and flag-category quantities use the complete imported workbook.");
 
