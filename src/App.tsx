@@ -8,6 +8,7 @@ import {
   FileSpreadsheet,
   LayoutDashboard,
   Plus,
+  Presentation,
   RefreshCcw,
   ShieldCheck,
   Trash2,
@@ -31,6 +32,7 @@ import {
   type HighLevelInfo,
 } from "./audit-model";
 import { exportFullAuditReport } from "./full-audit-report";
+import { exportPowerPointReport } from "./powerpoint-report";
 
 type ViewKey = "overview" | "high-level" | AssetCategorySlug;
 type MigrationFilter = "all" | "Microsoft" | "Google" | "Other";
@@ -226,6 +228,7 @@ export function AuditBuilder() {
   const [visibleLimit, setVisibleLimit] = React.useState(INITIAL_VISIBLE_ROWS);
   const [addCategory, setAddCategory] = React.useState<AssetCategorySlug | null>(null);
   const [reporting, setReporting] = React.useState(false);
+  const [presenting, setPresenting] = React.useState(false);
   const fileInputRef = React.useRef<HTMLInputElement>(null);
 
   const rows = audit?.rows ?? [];
@@ -324,6 +327,19 @@ export function AuditBuilder() {
     }
   }
 
+  async function exportPresentation() {
+    if (!audit) return;
+    setPresenting(true);
+    try {
+      await exportPowerPointReport(audit, clientName);
+    } catch (error) {
+      console.error("Unable to generate PowerPoint report", error);
+      setStatus("The PowerPoint report could not be generated. Review the browser console for details and try again.");
+    } finally {
+      setPresenting(false);
+    }
+  }
+
   const summary = ASSET_CATEGORY_SLUGS.map((slug) => {
     const categoryRows = rows.filter((row) => row.auditCategory === slug);
     return {
@@ -364,8 +380,11 @@ export function AuditBuilder() {
                     onChange={(event) => void handleUpload(event.target.files?.[0] ?? null)}
                   />
                 </label>
-                <button onClick={() => void exportReport()} disabled={reporting} className="inline-flex items-center gap-2 rounded-xl bg-[#FF2AA0] px-4 py-2.5 text-sm font-black disabled:opacity-50">
-                  <Download className="size-4" /> {reporting ? "Generating..." : "Full audit report"}
+                <button onClick={() => void exportReport()} disabled={reporting || presenting} className="inline-flex items-center gap-2 rounded-xl bg-[#FF2AA0] px-4 py-2.5 text-sm font-black disabled:opacity-50">
+                  <Download className="size-4" /> {reporting ? "Generating PDF..." : "PDF report"}
+                </button>
+                <button onClick={() => void exportPresentation()} disabled={reporting || presenting} className="inline-flex items-center gap-2 rounded-xl bg-[#7E3AED] px-4 py-2.5 text-sm font-black disabled:opacity-50">
+                  <Presentation className="size-4" /> {presenting ? "Generating PowerPoint..." : "PowerPoint report"}
                 </button>
                 <button onClick={reset} className="rounded-xl p-2.5 text-white/70 hover:bg-white/10 hover:text-white" aria-label="Reset">
                   <RefreshCcw className="size-4" />
