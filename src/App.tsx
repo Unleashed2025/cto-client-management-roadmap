@@ -469,6 +469,7 @@ export function AuditBuilder() {
 
   const rows = audit?.rows ?? [];
   const activeCategory = ASSET_CATEGORY_SLUGS.includes(activeView as AssetCategorySlug) ? activeView as AssetCategorySlug : null;
+  const complianceActive = String(activeView).startsWith("compliance");
   const activeBenchmarkId = String(activeView).startsWith("compliance:") ? String(activeView).slice("compliance:".length) as BenchmarkId : null;
   const activeBenchmark = activeBenchmarkId ? BENCHMARKS[activeBenchmarkId] : null;
   const activeRows = activeCategory ? rows.filter((row) => row.auditCategory === activeCategory) : [];
@@ -647,7 +648,7 @@ export function AuditBuilder() {
                     onChange={(event) => void handleUpload(event.target.files?.[0] ?? null)}
                   />
                 </label>
-                {!String(activeView).startsWith("compliance") && (
+                {!complianceActive && (
                   <button onClick={() => void exportPresentation()} disabled={presenting} className="inline-flex items-center gap-2 rounded-xl bg-[#7E3AED] px-4 py-2.5 text-sm font-black disabled:opacity-50">
                     <Presentation className="size-4" /> {presenting ? "Generating PowerPoint..." : "PowerPoint report"}
                   </button>
@@ -672,49 +673,72 @@ export function AuditBuilder() {
       ) : (
         <div className="mx-auto grid max-w-[1800px] gap-5 px-4 py-5 lg:grid-cols-[270px_minmax(0,1fr)]">
           <aside className="h-fit rounded-[24px] bg-white p-3 shadow-xl ring-1 ring-[#D9E7F5] lg:sticky lg:top-5">
-            <p className="px-4 pb-2 text-[10px] font-black uppercase tracking-[0.2em] text-slate-400">IT & Cyber Audit</p>
-            <button onClick={() => navigate("overview")} className={`flex w-full items-center gap-3 rounded-2xl px-4 py-3 text-left text-sm font-black ${activeView === "overview" ? "bg-[#071A3F] text-white" : "text-slate-700 hover:bg-slate-50"}`}>
-              <LayoutDashboard className="size-4" /> Audit overview
-            </button>
-            <button onClick={() => navigate("high-level")} className={`mt-1 flex w-full items-center gap-3 rounded-2xl px-4 py-3 text-left text-sm font-black ${activeView === "high-level" ? "bg-[#071A3F] text-white" : "text-slate-700 hover:bg-slate-50"}`}>
-              <Users className="size-4" /> High Level Info
-            </button>
-            <div className="my-3 h-px bg-slate-200" />
-            <p className="px-4 pb-2 text-[10px] font-black uppercase tracking-[0.2em] text-slate-400">Asset workspaces</p>
-            {summary.map((item) => (
+            <p className="px-4 pb-2 text-[10px] font-black uppercase tracking-[0.2em] text-slate-400">Workspace</p>
+            <div className="grid gap-2">
               <button
-                key={item.slug}
-                onClick={() => navigate(item.slug)}
-                className={`mb-1 flex w-full items-center justify-between rounded-2xl px-4 py-3 text-left ${activeView === item.slug ? "bg-[#7E3AED] text-white" : "text-slate-700 hover:bg-slate-50"}`}
+                onClick={() => navigate("overview")}
+                className={`flex w-full items-center gap-3 rounded-2xl px-4 py-3 text-left text-sm font-black ${!complianceActive ? "bg-[#071A3F] text-white" : "bg-slate-50 text-slate-700 hover:bg-slate-100"}`}
               >
-                <span className="text-sm font-bold">{ASSET_CATEGORIES[item.slug].label}</span>
-                <span className={`rounded-full px-2 py-0.5 text-[10px] font-black ${activeView === item.slug ? "bg-white/20" : item.flagged ? "bg-red-100 text-red-700" : "bg-slate-100 text-slate-600"}`}>
-                  {item.total}
-                </span>
+                <LayoutDashboard className="size-4" /> IT & Cyber Audit
               </button>
-            ))}
-            <div className="mt-3 rounded-2xl bg-[#EBF8FF] p-4 text-xs font-semibold leading-5 text-slate-600">
-              <ShieldCheck className="mb-2 size-5 text-[#7E3AED]" />
-              All edits stay in this browser tab and are included in the exported report.
+              <button
+                onClick={() => navigate("compliance-overview")}
+                className={`flex w-full items-center gap-3 rounded-2xl px-4 py-3 text-left text-sm font-black ${complianceActive ? "bg-[#7E3AED] text-white" : "bg-slate-50 text-slate-700 hover:bg-slate-100"}`}
+              >
+                <ClipboardCheck className="size-4" /> Compliance Benchmarks
+              </button>
             </div>
             <div className="my-4 h-px bg-slate-200" />
-            <p className="px-4 pb-2 text-[10px] font-black uppercase tracking-[0.2em] text-slate-400">Compliance Benchmarks</p>
-            <button
-              onClick={() => navigate("compliance-overview")}
-              className={`flex w-full items-center gap-3 rounded-2xl px-4 py-3 text-left text-sm font-black ${activeView === "compliance-overview" ? "bg-[#071A3F] text-white" : "text-slate-700 hover:bg-slate-50"}`}
-            >
-              <ClipboardCheck className="size-4" /> Benchmark overview
-            </button>
-            {BENCHMARK_IDS.map((id) => (
-              <button
-                key={id}
-                onClick={() => navigate(`compliance:${id}`)}
-                className={`mt-1 flex w-full items-center justify-between rounded-2xl px-4 py-3 text-left ${activeView === `compliance:${id}` ? "bg-[#00D4FF] text-[#071A3F]" : "text-slate-700 hover:bg-slate-50"}`}
-              >
-                <span className="text-sm font-bold">{BENCHMARKS[id].shortTitle}</span>
-                <ChevronRight className="size-4" />
-              </button>
-            ))}
+
+            {complianceActive ? (
+              <>
+                <p className="px-4 pb-2 text-[10px] font-black uppercase tracking-[0.2em] text-slate-400">Compliance Benchmarks</p>
+                <button
+                  onClick={() => navigate("compliance-overview")}
+                  className={`flex w-full items-center gap-3 rounded-2xl px-4 py-3 text-left text-sm font-black ${activeView === "compliance-overview" ? "bg-[#071A3F] text-white" : "text-slate-700 hover:bg-slate-50"}`}
+                >
+                  <ClipboardCheck className="size-4" /> Benchmark overview
+                </button>
+                {BENCHMARK_IDS.map((id) => (
+                  <button
+                    key={id}
+                    onClick={() => navigate(`compliance:${id}`)}
+                    className={`mt-1 flex w-full items-center justify-between rounded-2xl px-4 py-3 text-left ${activeView === `compliance:${id}` ? "bg-[#00D4FF] text-[#071A3F]" : "text-slate-700 hover:bg-slate-50"}`}
+                  >
+                    <span className="text-sm font-bold">{BENCHMARKS[id].shortTitle}</span>
+                    <ChevronRight className="size-4" />
+                  </button>
+                ))}
+              </>
+            ) : (
+              <>
+                <p className="px-4 pb-2 text-[10px] font-black uppercase tracking-[0.2em] text-slate-400">IT & Cyber Audit</p>
+                <button onClick={() => navigate("overview")} className={`flex w-full items-center gap-3 rounded-2xl px-4 py-3 text-left text-sm font-black ${activeView === "overview" ? "bg-[#071A3F] text-white" : "text-slate-700 hover:bg-slate-50"}`}>
+                  <LayoutDashboard className="size-4" /> Audit overview
+                </button>
+                <button onClick={() => navigate("high-level")} className={`mt-1 flex w-full items-center gap-3 rounded-2xl px-4 py-3 text-left text-sm font-black ${activeView === "high-level" ? "bg-[#071A3F] text-white" : "text-slate-700 hover:bg-slate-50"}`}>
+                  <Users className="size-4" /> High Level Info
+                </button>
+                <div className="my-3 h-px bg-slate-200" />
+                <p className="px-4 pb-2 text-[10px] font-black uppercase tracking-[0.2em] text-slate-400">Asset workspaces</p>
+                {summary.map((item) => (
+                  <button
+                    key={item.slug}
+                    onClick={() => navigate(item.slug)}
+                    className={`mb-1 flex w-full items-center justify-between rounded-2xl px-4 py-3 text-left ${activeView === item.slug ? "bg-[#7E3AED] text-white" : "text-slate-700 hover:bg-slate-50"}`}
+                  >
+                    <span className="text-sm font-bold">{ASSET_CATEGORIES[item.slug].label}</span>
+                    <span className={`rounded-full px-2 py-0.5 text-[10px] font-black ${activeView === item.slug ? "bg-white/20" : item.flagged ? "bg-red-100 text-red-700" : "bg-slate-100 text-slate-600"}`}>
+                      {item.total}
+                    </span>
+                  </button>
+                ))}
+                <div className="mt-3 rounded-2xl bg-[#EBF8FF] p-4 text-xs font-semibold leading-5 text-slate-600">
+                  <ShieldCheck className="mb-2 size-5 text-[#7E3AED]" />
+                  All edits stay in this browser tab and are included in the exported report.
+                </div>
+              </>
+            )}
           </aside>
 
           <section className="min-w-0 space-y-5">
