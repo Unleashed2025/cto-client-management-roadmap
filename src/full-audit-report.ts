@@ -510,7 +510,7 @@ export async function exportFullAuditReport(audit: BrowserAudit, clientName: str
     y = lastTableY() + 16;
     autoTable(doc, {
       startY: y,
-      head: [["Flagged category", "Quantity of items flagged"]],
+      head: [["Flagged category", "Qty"]],
       body: section.flaggedThemes.length > 0
         ? section.flaggedThemes.map((theme) => [theme.label, theme.count])
         : [["No flagged categories", 0]],
@@ -520,6 +520,14 @@ export async function exportFullAuditReport(audit: BrowserAudit, clientName: str
       margin: { left: margin, right: margin },
       columnStyles: { 0: { cellWidth: pageWidth - margin * 2 - 180 }, 1: { cellWidth: 180, halign: "center" } },
     });
+    doc.setTextColor(...BRAND.slate);
+    doc.setFont("helvetica", "italic");
+    doc.setFontSize(7.5);
+    doc.text(
+      `The ${section.flagged} flagged figure is the number of unique items. Category quantities may total more because one item can have multiple flag reasons.`,
+      margin,
+      Math.min(lastTableY() + 14, pageHeight - 22),
+    );
 
     y = newPage(`${section.label} — example flagged items`, `${clientName} · representative flagged detail limited to one page`, BRAND.pink);
     doc.setTextColor(...BRAND.navy);
