@@ -66,15 +66,21 @@ function fillParagraph(paragraph: string, reps: [RegExp, string][]): string {
   return out + paragraph.slice(last);
 }
 
-export async function fillDocx(buffer: ArrayBuffer, details: Details): Promise<Blob> {
+export async function fillDocx(buffer: ArrayBuffer, details: Details): Promise<{ blob: Blob; filled: number }> {
   const zip = await JSZip.loadAsync(buffer);
   const reps = replacements(details);
+  let filled = 0;
   const names = Object.keys(zip.files).filter((n) => /^word\/(document|header\d*|footer\d*)\.xml$/.test(n));
   for (const name of names) {
     const xml = await zip.file(name)!.async("string");
-    const next = xml.replace(/<w:p[ >][\s\S]*?<\/w:p>/g, (p) => fillParagraph(p, reps));
+    const next = xml.replace(/<w:p[ >][\s\S]*?<\/w:p>/g, (p) => {
+      const out = fillParagraph(p, reps);
+      if (out !== p) filled++;
+      return out;
+    });
     zip.file(name, next);
   }
-  return zip.generateAsync({ type: "blob", mimeType: "application/vnd.openxmlformats-officedocument.wordprocessingml.document" });
+  const blob = await zip.generateAsync({ type: "blob", mimeType: "application/vnd.openxmlformats-officedocument.wordprocessingml.document" });
+  return { blob, filled };
 }
 

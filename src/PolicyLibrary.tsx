@@ -17,6 +17,7 @@ export function PolicyLibrary({ clientName, onClientName }: { clientName: string
   const [reviewed, setReviewed] = React.useState<Record<string, boolean>>({});
   const [busy, setBusy] = React.useState<string | null>(null);
   const [error, setError] = React.useState("");
+  const [notice, setNotice] = React.useState("");
   const set = (k: keyof Details, v: string) => {
     setDetails((d) => ({ ...d, [k]: v }));
     if (k === "business") onClientName(v);
@@ -27,6 +28,7 @@ export function PolicyLibrary({ clientName, onClientName }: { clientName: string
   async function download(doc: PolicyDoc, personalise: boolean) {
     setBusy(doc.file);
     setError("");
+    setNotice("");
     try {
       const res = await fetch(`${base}policies/${doc.file}`);
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
@@ -34,7 +36,9 @@ export function PolicyLibrary({ clientName, onClientName }: { clientName: string
       const isDocx = doc.file.endsWith(".docx");
       if (personalise && isDocx) {
         const safe = (details.business || "Client").replace(/[^\w\- ]+/g, "").trim();
-        save(await fillDocx(buf, details), `${safe} - ${doc.file}`);
+        const { blob, filled } = await fillDocx(buf, details);
+        save(blob, `${safe} - ${doc.file}`);
+        setNotice(`${doc.title}: ${filled} paragraph${filled === 1 ? "" : "s"} personalised.`);
       } else {
         save(new Blob([buf]), doc.file);
       }
@@ -65,6 +69,7 @@ export function PolicyLibrary({ clientName, onClientName }: { clientName: string
           {field("Contact email", "email")}
           {field("Contact phone", "phone")}
         </div>
+        {notice && <p className="mt-3 text-sm font-bold text-emerald-700">{notice}</p>}
         {error && <p className="mt-3 text-sm font-bold text-red-600">{error}</p>}
       </section>
 
@@ -99,7 +104,7 @@ export function PolicyLibrary({ clientName, onClientName }: { clientName: string
                   </ul>
                   <div className="mt-4 flex flex-wrap gap-2">
                     {canFill && (
-                      <button disabled={busy === doc.file} onClick={() => void download(doc, true)} className="inline-flex items-center gap-2 rounded-xl bg-[#7E3AED] px-4 py-2 text-sm font-black text-white shadow-sm hover:bg-[#6B2FD0] disabled:opacity-60">
+                      <button disabled={busy === doc.file || !details.business.trim()} title={details.business.trim() ? "" : "Enter a business name above first"} onClick={() => void download(doc, true)} className="inline-flex items-center gap-2 rounded-xl bg-[#7E3AED] px-4 py-2 text-sm font-black text-white shadow-sm hover:bg-[#6B2FD0] disabled:cursor-not-allowed disabled:opacity-50">
                         <Download className="size-4" /> {busy === doc.file ? "Preparing…" : "Download for client"}
                       </button>
                     )}
