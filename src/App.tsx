@@ -1,10 +1,11 @@
 import * as React from "react";
 import {
   AlertTriangle,
+  ClipboardCheck,
   CheckCircle2,
   ChevronRight,
   Clock3,
-  Download,
+  ExternalLink,
   FileSpreadsheet,
   LayoutDashboard,
   Plus,
@@ -31,10 +32,19 @@ import {
   type BrowserAudit,
   type HighLevelInfo,
 } from "./audit-model";
-import { exportFullAuditReport } from "./full-audit-report";
 import { exportPowerPointReport } from "./powerpoint-report";
+import { exportCompliancePowerPoint } from "./compliance-powerpoint";
+import {
+  BENCHMARKS,
+  BENCHMARK_IDS,
+  type AssessmentAnswer,
+  type BenchmarkDefinition,
+  type BenchmarkId,
+} from "./compliance-benchmarks";
 
-type ViewKey = "overview" | "high-level" | AssetCategorySlug;
+type ViewKey = "overview" | "high-level" | "compliance-overview" | `compliance:${BenchmarkId}` | AssetCategorySlug;
+type BenchmarkResponse = { answer: AssessmentAnswer; evidence: string };
+type BenchmarkResponseSet = Record<string, BenchmarkResponse>;
 
 const INITIAL_VISIBLE_ROWS = 200;
 
@@ -219,7 +229,195 @@ function RiskBadge({ row }: { row: AuditRow }) {
   );
 }
 
-function EmptyUpload({ onFile, onBlank }: { onFile: (file: File | null) => void; onBlank: () => void }) {
+function ComplianceOverview({ onOpen }: { onOpen: (id: BenchmarkId) => void }) {
+  return (
+    <div className="space-y-5">
+      <div className="rounded-[26px] bg-[#071A3F] p-7 text-white shadow-xl">
+        <p className="text-xs font-black uppercase tracking-[0.22em] text-[#00D4FF]">Compliance benchmarks</p>
+        <h2 className="mt-2 text-3xl font-black tracking-[-0.04em]">Current-state readiness assessments</h2>
+        <p className="mt-3 max-w-4xl text-sm font-semibold leading-6 text-white/75">
+          Complete evidence-led questionnaires to identify whether the current environment is ready to pass each benchmark.
+          Results are indicative readiness findings, not certification decisions.
+        </p>
+      </div>
+      <div className="grid gap-4 xl:grid-cols-2">
+        {BENCHMARK_IDS.map((id) => {
+          const benchmark = BENCHMARKS[id];
+          return (
+            <article key={id} className="rounded-[26px] bg-white p-6 shadow-xl ring-1 ring-[#D9E7F5]">
+              <div className="flex items-start justify-between gap-4">
+                <div>
+                  <p className="text-[10px] font-black uppercase tracking-[0.18em] text-[#7E3AED]">{benchmark.version}</p>
+                  <h3 className="mt-1 text-2xl font-black tracking-[-0.03em]">{benchmark.title}</h3>
+                </div>
+                <div className="grid size-11 shrink-0 place-items-center rounded-2xl bg-[#EBF8FF] text-[#7E3AED]">
+                  <ClipboardCheck className="size-5" />
+                </div>
+              </div>
+              <p className="mt-4 text-sm font-semibold leading-6 text-slate-600">{benchmark.description}</p>
+              <div className="mt-5 rounded-2xl bg-amber-50 p-4 text-xs font-semibold leading-5 text-amber-900">{benchmark.notice}</div>
+              <div className="mt-5 flex flex-wrap items-center gap-3">
+                <button onClick={() => onOpen(id)} className="rounded-xl bg-[#7E3AED] px-4 py-2.5 text-sm font-black text-white">
+                  Start assessment
+                </button>
+                <a href={benchmark.sourceUrl} target="_blank" rel="noreferrer" className="inline-flex items-center gap-2 text-sm font-black text-[#7E3AED]">
+                  Official source <ExternalLink className="size-4" />
+                </a>
+              </div>
+            </article>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+function ComplianceAssessment({
+  benchmark,
+  responses,
+  cisTier,
+  onCisTierChange,
+  onChange,
+  onReset,
+  onBack,
+  onExport,
+  exporting,
+}: {
+  benchmark: BenchmarkDefinition;
+  responses: BenchmarkResponseSet;
+  cisTier: 1 | 2 | 3;
+  onCisTierChange: (tier: 1 | 2 | 3) => void;
+  onChange: (questionId: string, patch: Partial<BenchmarkResponse>) => void;
+  onReset: () => void;
+  onBack: () => void;
+  onExport: () => void;
+  exporting: boolean;
+}) {
+  const visibleQuestions = benchmark.questions.filter((question) => benchmark.id !== "cis" || (question.tier ?? 1) <= cisTier);
+  const result = visibleQuestions.reduce((summary, question) => {
+    const answer = responses[question.id]?.answer ?? "not-assessed";
+    summary[answer] += 1;
+    return summary;
+  }, { "not-assessed": 0, pass: 0, partial: 0, fail: 0, "not-applicable": 0 } as Record<AssessmentAnswer, number>);
+  const assessed = result.pass + result.partial + result.fail + result["not-applicable"];
+  const applicable = visibleQuestions.length - result["not-applicable"];
+  const score = applicable > 0 ? Math.round(((result.pass + result.partial * 0.5) / applicable) * 100) : 0;
+  const ready = visibleQuestions.length > 0 && assessed === visibleQuestions.length && result.partial === 0 && result.fail === 0;
+  const started = assessed > 0;
+  const sections = [...new Set(visibleQuestions.map((question) => question.section))];
+
+  return (
+    <div className="space-y-5">
+      <div className="rounded-[26px] bg-white p-6 shadow-xl ring-1 ring-[#D9E7F5]">
+        <div className="flex flex-col gap-5 xl:flex-row xl:items-start xl:justify-between">
+          <div>
+            <button onClick={onBack} className="text-xs font-black uppercase tracking-[0.16em] text-[#7E3AED]">← Compliance benchmarks</button>
+            <h2 className="mt-2 text-3xl font-black tracking-[-0.04em]">{benchmark.title}</h2>
+            <p className="mt-2 max-w-4xl text-sm font-semibold leading-6 text-slate-600">{benchmark.description}</p>
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+            {benchmark.id === "cis" && (
+              <label className="flex items-center gap-2 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm font-bold">
+                Target group
+                <select value={cisTier} onChange={(event) => onCisTierChange(Number(event.target.value) as 1 | 2 | 3)} className="bg-transparent font-black text-[#7E3AED] outline-none">
+                  <option value={1}>IG1</option>
+                  <option value={2}>IG2</option>
+                  <option value={3}>IG3</option>
+                </select>
+              </label>
+            )}
+            <button onClick={onReset} className="rounded-xl border border-slate-200 px-4 py-2.5 text-sm font-black text-slate-700">Reset answers</button>
+            <button onClick={onExport} disabled={exporting} className="inline-flex items-center gap-2 rounded-xl bg-[#7E3AED] px-4 py-2.5 text-sm font-black text-white disabled:opacity-50">
+              <Presentation className="size-4" /> {exporting ? "Generating..." : "PowerPoint report"}
+            </button>
+            <a href={benchmark.sourceUrl} target="_blank" rel="noreferrer" className="inline-flex items-center gap-2 rounded-xl bg-[#071A3F] px-4 py-2.5 text-sm font-black text-white">
+              {benchmark.sourceLabel} <ExternalLink className="size-4" />
+            </a>
+          </div>
+        </div>
+        <div className="mt-5 rounded-2xl bg-amber-50 p-4 text-xs font-semibold leading-5 text-amber-900">{benchmark.notice}</div>
+      </div>
+
+      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
+        {[
+          ["Questions", visibleQuestions.length, "bg-[#071A3F] text-white"],
+          ["Assessed", `${assessed}/${visibleQuestions.length}`, "bg-[#7E3AED] text-white"],
+          ["Pass", result.pass, "bg-emerald-600 text-white"],
+          ["Partial / Fail", result.partial + result.fail, "bg-[#FF2AA0] text-white"],
+          ["Readiness", `${score}%`, "bg-[#00D4FF] text-[#071A3F]"],
+        ].map(([label, value, className]) => (
+          <div key={String(label)} className={`rounded-[22px] p-5 shadow-lg ${className}`}>
+            <p className="text-2xl font-black">{String(value)}</p>
+            <p className="mt-3 text-[10px] font-black uppercase tracking-[0.14em]">{String(label)}</p>
+          </div>
+        ))}
+      </div>
+
+      <div className={`rounded-[24px] border-2 p-5 ${ready ? "border-emerald-300 bg-emerald-50 text-emerald-900" : started ? "border-red-200 bg-red-50 text-red-900" : "border-slate-200 bg-white text-slate-700"}`}>
+        <p className="text-xs font-black uppercase tracking-[0.16em]">Indicative current-state result</p>
+        <p className="mt-1 text-2xl font-black">{ready ? "PASS-READY" : started ? "FAIL / NOT READY" : "NOT YET ASSESSED"}</p>
+        <p className="mt-2 text-sm font-semibold">
+          {ready
+            ? "Every applicable question is marked Pass. Independent verification and the authoritative framework may still identify additional requirements."
+            : started
+              ? `${result.fail} failed, ${result.partial} partially met, and ${result["not-assessed"]} not yet assessed.`
+              : "Answer the questions and record supporting evidence to calculate readiness."}
+        </p>
+      </div>
+
+      {sections.map((section) => (
+        <section key={section} className="overflow-hidden rounded-[26px] bg-white shadow-xl ring-1 ring-[#D9E7F5]">
+          <div className="border-b border-slate-200 bg-[#071A3F] px-6 py-4 text-white">
+            <h3 className="font-black">{section}</h3>
+          </div>
+          <div className="divide-y divide-slate-200">
+            {visibleQuestions.filter((question) => question.section === section).map((question, index) => {
+              const response = responses[question.id] ?? { answer: "not-assessed" as AssessmentAnswer, evidence: "" };
+              return (
+                <div key={question.id} className="grid gap-4 p-5 xl:grid-cols-[minmax(0,1fr)_190px_minmax(280px,0.8fr)]">
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <span className="grid size-7 shrink-0 place-items-center rounded-lg bg-[#EBF8FF] text-xs font-black text-[#7E3AED]">{index + 1}</span>
+                      {question.tier && <span className="rounded-full bg-[#7E3AED]/10 px-2 py-1 text-[10px] font-black text-[#7E3AED]">IG{question.tier}</span>}
+                    </div>
+                    <p className="mt-3 text-sm font-bold leading-6 text-slate-900">{question.prompt}</p>
+                    <p className="mt-2 text-xs font-semibold leading-5 text-slate-500">{question.evidencePrompt}</p>
+                  </div>
+                  <label className="space-y-1.5">
+                    <span className="text-xs font-black uppercase tracking-[0.12em] text-slate-500">Assessment</span>
+                    <select
+                      value={response.answer}
+                      onChange={(event) => onChange(question.id, { answer: event.target.value as AssessmentAnswer })}
+                      className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm font-bold outline-none focus:border-[#7E3AED]"
+                    >
+                      <option value="not-assessed">Not assessed</option>
+                      <option value="pass">Pass</option>
+                      <option value="partial">Partial</option>
+                      <option value="fail">Fail</option>
+                      <option value="not-applicable">Not applicable</option>
+                    </select>
+                  </label>
+                  <label className="space-y-1.5">
+                    <span className="text-xs font-black uppercase tracking-[0.12em] text-slate-500">Evidence / notes</span>
+                    <textarea
+                      value={response.evidence}
+                      onChange={(event) => onChange(question.id, { evidence: event.target.value })}
+                      rows={4}
+                      placeholder="Record evidence, gaps, owner and next action..."
+                      className="w-full resize-y rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm outline-none focus:border-[#7E3AED]"
+                    />
+                  </label>
+                </div>
+              );
+            })}
+          </div>
+        </section>
+      ))}
+    </div>
+  );
+}
+
+function EmptyUpload({ onFile, onBlank, onCompliance }: { onFile: (file: File | null) => void; onBlank: () => void; onCompliance: () => void }) {
   return (
     <section className="mx-auto mt-10 max-w-4xl rounded-[30px] border-2 border-dashed border-[#7E3AED]/40 bg-white p-12 text-center shadow-xl">
       <div className="mx-auto grid size-20 place-items-center rounded-[24px] bg-[#EBF8FF] text-[#7E3AED]">
@@ -246,6 +444,9 @@ function EmptyUpload({ onFile, onBlank }: { onFile: (file: File | null) => void;
           <Plus className="size-4" /> Start blank audit
         </button>
       </div>
+      <button onClick={onCompliance} className="mt-4 inline-flex items-center gap-2 text-sm font-black text-[#071A3F]">
+        <ClipboardCheck className="size-4 text-[#7E3AED]" /> Open compliance benchmarks
+      </button>
       <div className="mt-8 flex items-center justify-center gap-2 text-xs font-bold text-slate-500">
         <ShieldCheck className="size-4 text-[#00D4FF]" />
         Parsed locally in this browser. Nothing is written to the Lifecycle app.
@@ -261,12 +462,15 @@ export function AuditBuilder() {
   const [status, setStatus] = React.useState("Upload a workbook to create the browser-only audit workspace.");
   const [visibleLimit, setVisibleLimit] = React.useState(INITIAL_VISIBLE_ROWS);
   const [addCategory, setAddCategory] = React.useState<AssetCategorySlug | null>(null);
-  const [reporting, setReporting] = React.useState(false);
   const [presenting, setPresenting] = React.useState(false);
+  const [benchmarkResponses, setBenchmarkResponses] = React.useState<Partial<Record<BenchmarkId, BenchmarkResponseSet>>>({});
+  const [cisTier, setCisTier] = React.useState<1 | 2 | 3>(1);
   const fileInputRef = React.useRef<HTMLInputElement>(null);
 
   const rows = audit?.rows ?? [];
   const activeCategory = ASSET_CATEGORY_SLUGS.includes(activeView as AssetCategorySlug) ? activeView as AssetCategorySlug : null;
+  const activeBenchmarkId = String(activeView).startsWith("compliance:") ? String(activeView).slice("compliance:".length) as BenchmarkId : null;
+  const activeBenchmark = activeBenchmarkId ? BENCHMARKS[activeBenchmarkId] : null;
   const activeRows = activeCategory ? rows.filter((row) => row.auditCategory === activeCategory) : [];
   const filteredRows = activeRows;
   const displayedRows = filteredRows.slice(0, visibleLimit);
@@ -302,6 +506,29 @@ export function AuditBuilder() {
     setClientName("New client audit");
     navigate("high-level");
     setStatus("Blank audit started. Complete High Level Info, then add records in each category workspace.");
+  }
+
+  function openCompliance() {
+    if (!audit) {
+      setAudit(createBlankAudit());
+      setClientName("New client assessment");
+    }
+    navigate("compliance-overview");
+    setStatus("Compliance benchmark workspace opened. Results remain in this browser tab.");
+  }
+
+  function updateBenchmarkResponse(benchmarkId: BenchmarkId, questionId: string, patch: Partial<BenchmarkResponse>) {
+    setBenchmarkResponses((current) => {
+      const benchmark = current[benchmarkId] ?? {};
+      const response = benchmark[questionId] ?? { answer: "not-assessed" as AssessmentAnswer, evidence: "" };
+      return {
+        ...current,
+        [benchmarkId]: {
+          ...benchmark,
+          [questionId]: { ...response, ...patch },
+        },
+      };
+    });
   }
 
   function updateRow(rowId: string, field: string, value: unknown) {
@@ -350,20 +577,9 @@ export function AuditBuilder() {
     setClientName("Temporary audit");
     navigate("overview");
     setStatus("Reset complete. No temporary audit data remains on this page.");
+    setBenchmarkResponses({});
+    setCisTier(1);
     if (fileInputRef.current) fileInputRef.current.value = "";
-  }
-
-  async function exportReport() {
-    if (!audit) return;
-    setReporting(true);
-    try {
-      await exportFullAuditReport(audit, clientName);
-    } catch (error) {
-      console.error("Unable to generate full audit report", error);
-      setStatus("The report could not be generated. Review the browser console for details and try again.");
-    } finally {
-      setReporting(false);
-    }
   }
 
   async function exportPresentation() {
@@ -374,6 +590,18 @@ export function AuditBuilder() {
     } catch (error) {
       console.error("Unable to generate PowerPoint report", error);
       setStatus("The PowerPoint report could not be generated. Review the browser console for details and try again.");
+    } finally {
+      setPresenting(false);
+    }
+  }
+
+  async function exportBenchmarkPresentation(benchmarkId: BenchmarkId) {
+    setPresenting(true);
+    try {
+      await exportCompliancePowerPoint(BENCHMARKS[benchmarkId], benchmarkResponses[benchmarkId] ?? {}, clientName, cisTier);
+    } catch (error) {
+      console.error("Unable to generate compliance PowerPoint report", error);
+      setStatus("The compliance PowerPoint report could not be generated. Review the browser console for details and try again.");
     } finally {
       setPresenting(false);
     }
@@ -419,12 +647,11 @@ export function AuditBuilder() {
                     onChange={(event) => void handleUpload(event.target.files?.[0] ?? null)}
                   />
                 </label>
-                <button onClick={() => void exportReport()} disabled={reporting || presenting} className="inline-flex items-center gap-2 rounded-xl bg-[#FF2AA0] px-4 py-2.5 text-sm font-black disabled:opacity-50">
-                  <Download className="size-4" /> {reporting ? "Generating PDF..." : "PDF report"}
-                </button>
-                <button onClick={() => void exportPresentation()} disabled={reporting || presenting} className="inline-flex items-center gap-2 rounded-xl bg-[#7E3AED] px-4 py-2.5 text-sm font-black disabled:opacity-50">
-                  <Presentation className="size-4" /> {presenting ? "Generating PowerPoint..." : "PowerPoint report"}
-                </button>
+                {!String(activeView).startsWith("compliance") && (
+                  <button onClick={() => void exportPresentation()} disabled={presenting} className="inline-flex items-center gap-2 rounded-xl bg-[#7E3AED] px-4 py-2.5 text-sm font-black disabled:opacity-50">
+                    <Presentation className="size-4" /> {presenting ? "Generating PowerPoint..." : "PowerPoint report"}
+                  </button>
+                )}
                 <button onClick={reset} className="rounded-xl p-2.5 text-white/70 hover:bg-white/10 hover:text-white" aria-label="Reset">
                   <RefreshCcw className="size-4" />
                 </button>
@@ -439,12 +666,13 @@ export function AuditBuilder() {
 
       {!audit ? (
         <div className="px-5 pb-12">
-          <EmptyUpload onFile={(file) => void handleUpload(file)} onBlank={startBlankAudit} />
+          <EmptyUpload onFile={(file) => void handleUpload(file)} onBlank={startBlankAudit} onCompliance={openCompliance} />
           <p className="mx-auto mt-5 max-w-4xl rounded-2xl bg-white/80 px-5 py-3 text-center text-sm font-bold text-slate-600 ring-1 ring-[#D9E7F5]">{status}</p>
         </div>
       ) : (
         <div className="mx-auto grid max-w-[1800px] gap-5 px-4 py-5 lg:grid-cols-[270px_minmax(0,1fr)]">
           <aside className="h-fit rounded-[24px] bg-white p-3 shadow-xl ring-1 ring-[#D9E7F5] lg:sticky lg:top-5">
+            <p className="px-4 pb-2 text-[10px] font-black uppercase tracking-[0.2em] text-slate-400">IT & Cyber Audit</p>
             <button onClick={() => navigate("overview")} className={`flex w-full items-center gap-3 rounded-2xl px-4 py-3 text-left text-sm font-black ${activeView === "overview" ? "bg-[#071A3F] text-white" : "text-slate-700 hover:bg-slate-50"}`}>
               <LayoutDashboard className="size-4" /> Audit overview
             </button>
@@ -469,6 +697,24 @@ export function AuditBuilder() {
               <ShieldCheck className="mb-2 size-5 text-[#7E3AED]" />
               All edits stay in this browser tab and are included in the exported report.
             </div>
+            <div className="my-4 h-px bg-slate-200" />
+            <p className="px-4 pb-2 text-[10px] font-black uppercase tracking-[0.2em] text-slate-400">Compliance Benchmarks</p>
+            <button
+              onClick={() => navigate("compliance-overview")}
+              className={`flex w-full items-center gap-3 rounded-2xl px-4 py-3 text-left text-sm font-black ${activeView === "compliance-overview" ? "bg-[#071A3F] text-white" : "text-slate-700 hover:bg-slate-50"}`}
+            >
+              <ClipboardCheck className="size-4" /> Benchmark overview
+            </button>
+            {BENCHMARK_IDS.map((id) => (
+              <button
+                key={id}
+                onClick={() => navigate(`compliance:${id}`)}
+                className={`mt-1 flex w-full items-center justify-between rounded-2xl px-4 py-3 text-left ${activeView === `compliance:${id}` ? "bg-[#00D4FF] text-[#071A3F]" : "text-slate-700 hover:bg-slate-50"}`}
+              >
+                <span className="text-sm font-bold">{BENCHMARKS[id].shortTitle}</span>
+                <ChevronRight className="size-4" />
+              </button>
+            ))}
           </aside>
 
           <section className="min-w-0 space-y-5">
@@ -545,6 +791,25 @@ export function AuditBuilder() {
                   </div>
                 </div>
               </>
+            )}
+
+            {activeView === "compliance-overview" && (
+              <ComplianceOverview onOpen={(id) => navigate(`compliance:${id}`)} />
+            )}
+
+            {activeBenchmark && activeBenchmarkId && (
+              <ComplianceAssessment
+                key={activeBenchmarkId}
+                benchmark={activeBenchmark}
+                responses={benchmarkResponses[activeBenchmarkId] ?? {}}
+                cisTier={cisTier}
+                onCisTierChange={setCisTier}
+                onChange={(questionId, patch) => updateBenchmarkResponse(activeBenchmarkId, questionId, patch)}
+                onReset={() => setBenchmarkResponses((current) => ({ ...current, [activeBenchmarkId]: {} }))}
+                onBack={() => navigate("compliance-overview")}
+                onExport={() => void exportBenchmarkPresentation(activeBenchmarkId)}
+                exporting={presenting}
+              />
             )}
 
             {activeView === "high-level" && (
