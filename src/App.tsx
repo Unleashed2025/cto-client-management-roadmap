@@ -406,9 +406,11 @@ function ComplianceAssessment({
 
 function ServicesHub({
   onAudit,
+  onCopilotWorkshop,
   onBenchmark,
 }: {
   onAudit: () => void;
+  onCopilotWorkshop: () => void;
   onBenchmark: (id: BenchmarkId) => void;
 }) {
   const futureService = (title: string) => (
@@ -443,18 +445,16 @@ function ServicesHub({
           </div>
           <div className="mt-5 space-y-3">
             {serviceButton("IT and Cyber Audit", onAudit)}
-            <a
-              href="https://unleashed2025.github.io/copilot-adoption-workshop/"
-              target="_blank"
-              rel="noreferrer"
+            <button
+              onClick={onCopilotWorkshop}
               className="group flex items-center justify-between gap-4 rounded-2xl border border-slate-200 bg-white px-4 py-3.5 text-left shadow-sm transition hover:-translate-y-0.5 hover:border-[#00D4FF]/60 hover:shadow-md"
             >
               <span>
                 <span className="block text-sm font-black text-slate-800">Microsoft Copilot Adoption Workshop</span>
                 <span className="mt-0.5 block text-xs font-semibold text-slate-500">Open the existing workshop</span>
               </span>
-              <ExternalLink className="size-4 shrink-0 text-[#00A6C7]" />
-            </a>
+              <ChevronRight className="size-4 shrink-0 text-[#00A6C7] transition group-hover:translate-x-0.5" />
+            </button>
             {futureService("AI Data Readiness")}
             {futureService("Back-up and Business Continuity Assessment")}
             {futureService("MSP / IT Services Evaluation")}
@@ -476,6 +476,31 @@ function ServicesHub({
             {futureService("Core IT Policy Review and Creation")}
           </div>
         </section>
+      </div>
+    </div>
+  );
+}
+
+function EmbeddedCopilotWorkshop({ onBack }: { onBack: () => void }) {
+  return (
+    <div className="mx-auto max-w-[1800px] px-4 py-5">
+      <div className="overflow-hidden rounded-[26px] bg-white shadow-2xl ring-1 ring-[#D9E7F5]">
+        <div className="flex flex-col gap-4 border-b border-slate-200 bg-white px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <p className="text-[10px] font-black uppercase tracking-[0.18em] text-[#7E3AED]">Fractional CTO workshop</p>
+            <h2 className="mt-1 text-2xl font-black tracking-[-0.03em]">Microsoft Copilot Adoption Workshop</h2>
+            <p className="mt-1 text-sm font-semibold text-slate-500">The existing workshop is embedded here as part of the Fractional C-Suite Services Hub.</p>
+          </div>
+          <button onClick={onBack} className="inline-flex shrink-0 items-center justify-center gap-2 rounded-xl bg-[#00D4FF] px-4 py-2.5 text-sm font-black text-[#071A3F] hover:bg-[#5BE5FF]">
+            <Home className="size-4" /> Back to homepage
+          </button>
+        </div>
+        <iframe
+          src="https://unleashed2025.github.io/copilot-adoption-workshop/"
+          title="Microsoft Copilot Adoption Workshop"
+          className="block h-[calc(100vh-220px)] min-h-[720px] w-full border-0 bg-white"
+          allow="clipboard-read; clipboard-write"
+        />
       </div>
     </div>
   );
@@ -518,6 +543,7 @@ function EmptyUpload({ onFile, onBlank }: { onFile: (file: File | null) => void;
 
 export function AuditBuilder() {
   const [showHub, setShowHub] = React.useState(true);
+  const [embeddedService, setEmbeddedService] = React.useState<"copilot-workshop" | null>(null);
   const [audit, setAudit] = React.useState<BrowserAudit | null>(null);
   const [clientName, setClientName] = React.useState("Temporary audit");
   const [activeView, setActiveView] = React.useState<ViewKey>("overview");
@@ -576,6 +602,7 @@ export function AuditBuilder() {
   }
 
   function openAuditService() {
+    setEmbeddedService(null);
     setShowHub(false);
     if (audit) {
       navigate("overview");
@@ -590,9 +617,16 @@ export function AuditBuilder() {
       setAudit(createBlankAudit());
       setClientName("New client assessment");
     }
+    setEmbeddedService(null);
     setShowHub(false);
     navigate(`compliance:${benchmarkId}`);
     setStatus(`${BENCHMARKS[benchmarkId].shortTitle} assessment opened. Results remain in this browser tab.`);
+  }
+
+  function openCopilotWorkshop() {
+    setEmbeddedService("copilot-workshop");
+    setShowHub(false);
+    setStatus("Microsoft Copilot Adoption Workshop opened inside the Services Hub.");
   }
 
   function updateBenchmarkResponse(benchmarkId: BenchmarkId, questionId: string, patch: Partial<BenchmarkResponse>) {
@@ -705,8 +739,8 @@ export function AuditBuilder() {
             <img src={`${import.meta.env.BASE_URL}unleashed-logo-white.png`} alt="Unleashed" className="h-auto w-44" />
             <div className="hidden h-10 w-px bg-white/20 sm:block" />
             <div>
-              <p className="text-[10px] font-black uppercase tracking-[0.28em] text-[#00D4FF]">{showHub ? "Fractional CTO & CISO services" : activeBenchmark ? "Fractional CISO assessment" : "Fractional CTO assessment"}</p>
-              <h1 className="mt-1 text-2xl font-black tracking-[-0.04em]">{showHub ? "Fractional C-Suite Services Hub" : activeBenchmark?.title ?? "Client Audit Asset Management"}</h1>
+              <p className="text-[10px] font-black uppercase tracking-[0.28em] text-[#00D4FF]">{showHub ? "Fractional CTO & CISO services" : activeBenchmark ? "Fractional CISO assessment" : "Fractional CTO service"}</p>
+              <h1 className="mt-1 text-2xl font-black tracking-[-0.04em]">{showHub ? "Fractional C-Suite Services Hub" : embeddedService === "copilot-workshop" ? "Microsoft Copilot Adoption Workshop" : activeBenchmark?.title ?? "Client Audit Asset Management"}</h1>
             </div>
           </div>
           <div className="flex flex-wrap items-center gap-2">
@@ -715,7 +749,7 @@ export function AuditBuilder() {
                 <Home className="size-4" /> Back to homepage
               </button>
             )}
-            {audit && !showHub && (
+            {audit && !showHub && !embeddedService && (
               <>
                 <label className="rounded-xl bg-white/10 px-3 py-2">
                   <span className="sr-only">Client or assessment name</span>
@@ -751,7 +785,9 @@ export function AuditBuilder() {
       </header>
 
       {showHub ? (
-        <ServicesHub onAudit={openAuditService} onBenchmark={openBenchmarkService} />
+        <ServicesHub onAudit={openAuditService} onCopilotWorkshop={openCopilotWorkshop} onBenchmark={openBenchmarkService} />
+      ) : embeddedService === "copilot-workshop" ? (
+        <EmbeddedCopilotWorkshop onBack={() => setShowHub(true)} />
       ) : activeBenchmark && activeBenchmarkId ? (
         <div className="mx-auto max-w-[1600px] space-y-5 px-5 py-6">
           <p className="rounded-2xl bg-white/80 px-5 py-3 text-sm font-bold text-slate-600 shadow-sm ring-1 ring-[#D9E7F5]">{status}</p>
