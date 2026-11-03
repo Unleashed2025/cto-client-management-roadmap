@@ -1,12 +1,12 @@
 import * as React from "react";
 import {
   AlertTriangle,
-  ClipboardCheck,
   CheckCircle2,
   ChevronRight,
   Clock3,
   ExternalLink,
   FileSpreadsheet,
+  Home,
   LayoutDashboard,
   Plus,
   Presentation,
@@ -36,7 +36,6 @@ import { exportPowerPointReport } from "./powerpoint-report";
 import { exportCompliancePowerPoint } from "./compliance-powerpoint";
 import {
   BENCHMARKS,
-  BENCHMARK_IDS,
   type AssessmentAnswer,
   type AssessmentDepth,
   type BenchmarkDefinition,
@@ -230,49 +229,6 @@ function RiskBadge({ row }: { row: AuditRow }) {
   );
 }
 
-function ComplianceOverview({ onOpen }: { onOpen: (id: BenchmarkId) => void }) {
-  return (
-    <div className="space-y-5">
-      <div className="rounded-[26px] bg-[#071A3F] p-7 text-white shadow-xl">
-        <p className="text-xs font-black uppercase tracking-[0.22em] text-[#00D4FF]">Compliance benchmarks</p>
-        <h2 className="mt-2 text-3xl font-black tracking-[-0.04em]">Current-state readiness assessments</h2>
-        <p className="mt-3 max-w-4xl text-sm font-semibold leading-6 text-white/75">
-          Complete evidence-led questionnaires to identify whether the current environment is ready to pass each benchmark.
-          Results are indicative readiness findings, not certification decisions.
-        </p>
-      </div>
-      <div className="grid gap-4 xl:grid-cols-2">
-        {BENCHMARK_IDS.map((id) => {
-          const benchmark = BENCHMARKS[id];
-          return (
-            <article key={id} className="rounded-[26px] bg-white p-6 shadow-xl ring-1 ring-[#D9E7F5]">
-              <div className="flex items-start justify-between gap-4">
-                <div>
-                  <p className="text-[10px] font-black uppercase tracking-[0.18em] text-[#7E3AED]">{benchmark.version}</p>
-                  <h3 className="mt-1 text-2xl font-black tracking-[-0.03em]">{benchmark.title}</h3>
-                </div>
-                <div className="grid size-11 shrink-0 place-items-center rounded-2xl bg-[#EBF8FF] text-[#7E3AED]">
-                  <ClipboardCheck className="size-5" />
-                </div>
-              </div>
-              <p className="mt-4 text-sm font-semibold leading-6 text-slate-600">{benchmark.description}</p>
-              <div className="mt-5 rounded-2xl bg-amber-50 p-4 text-xs font-semibold leading-5 text-amber-900">{benchmark.notice}</div>
-              <div className="mt-5 flex flex-wrap items-center gap-3">
-                <button onClick={() => onOpen(id)} className="rounded-xl bg-[#7E3AED] px-4 py-2.5 text-sm font-black text-white">
-                  Start assessment
-                </button>
-                <a href={benchmark.sourceUrl} target="_blank" rel="noreferrer" className="inline-flex items-center gap-2 text-sm font-black text-[#7E3AED]">
-                  Official source <ExternalLink className="size-4" />
-                </a>
-              </div>
-            </article>
-          );
-        })}
-      </div>
-    </div>
-  );
-}
-
 function ComplianceAssessment({
   benchmark,
   responses,
@@ -317,7 +273,7 @@ function ComplianceAssessment({
       <div className="rounded-[26px] bg-white p-6 shadow-xl ring-1 ring-[#D9E7F5]">
         <div className="flex flex-col gap-5 xl:flex-row xl:items-start xl:justify-between">
           <div>
-            <button onClick={onBack} className="text-xs font-black uppercase tracking-[0.16em] text-[#7E3AED]">← Compliance benchmarks</button>
+            <button onClick={onBack} className="text-xs font-black uppercase tracking-[0.16em] text-[#7E3AED]">← Services Hub</button>
             <h2 className="mt-2 text-3xl font-black tracking-[-0.04em]">{benchmark.title}</h2>
             <p className="mt-2 max-w-4xl text-sm font-semibold leading-6 text-slate-600">{benchmark.description}</p>
           </div>
@@ -448,7 +404,84 @@ function ComplianceAssessment({
   );
 }
 
-function EmptyUpload({ onFile, onBlank, onCompliance }: { onFile: (file: File | null) => void; onBlank: () => void; onCompliance: () => void }) {
+function ServicesHub({
+  onAudit,
+  onBenchmark,
+}: {
+  onAudit: () => void;
+  onBenchmark: (id: BenchmarkId) => void;
+}) {
+  const futureService = (title: string) => (
+    <div className="flex items-center justify-between gap-4 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3.5 text-left">
+      <span className="text-sm font-bold text-slate-500">{title}</span>
+      <span className="shrink-0 rounded-full bg-slate-200 px-2.5 py-1 text-[9px] font-black uppercase tracking-[0.12em] text-slate-500">Coming later</span>
+    </div>
+  );
+  const serviceButton = (title: string, onClick: () => void) => (
+    <button onClick={onClick} className="group flex w-full items-center justify-between gap-4 rounded-2xl border border-slate-200 bg-white px-4 py-3.5 text-left shadow-sm transition hover:-translate-y-0.5 hover:border-[#7E3AED]/40 hover:shadow-md">
+      <span className="text-sm font-black text-slate-800">{title}</span>
+      <ChevronRight className="size-4 shrink-0 text-[#7E3AED] transition group-hover:translate-x-0.5" />
+    </button>
+  );
+
+  return (
+    <div className="mx-auto max-w-[1500px] px-5 py-12">
+      <section className="overflow-hidden rounded-[34px] bg-[#071A3F] px-7 py-10 text-white shadow-2xl sm:px-10">
+        <p className="text-xs font-black uppercase tracking-[0.28em] text-[#00D4FF]">Unleashed advisory workspace</p>
+        <h2 className="mt-3 max-w-4xl text-4xl font-black tracking-[-0.05em] sm:text-5xl">Fractional C-Suite Services Hub</h2>
+        <p className="mt-4 max-w-3xl text-base font-semibold leading-7 text-white/70">
+          Choose the Fractional CTO or Fractional CISO service required. Live assessments open in this browser; planned services are clearly marked for future development.
+        </p>
+      </section>
+
+      <div className="mt-6 grid gap-6 xl:grid-cols-2">
+        <section className="rounded-[30px] bg-white p-6 shadow-xl ring-1 ring-[#D9E7F5]">
+          <div className="rounded-[22px] bg-gradient-to-br from-[#00D4FF] to-[#7E3AED] p-6 text-white">
+            <p className="text-[10px] font-black uppercase tracking-[0.22em] text-white/75">Technology leadership</p>
+            <h3 className="mt-2 text-3xl font-black tracking-[-0.04em]">Fractional CTO</h3>
+            <p className="mt-2 text-sm font-semibold text-white/80">Assessments and workshops for technology strategy, operations, adoption, and resilience.</p>
+          </div>
+          <div className="mt-5 space-y-3">
+            {serviceButton("IT and Cyber Audit", onAudit)}
+            <a
+              href="https://unleashed2025.github.io/copilot-adoption-workshop/"
+              target="_blank"
+              rel="noreferrer"
+              className="group flex items-center justify-between gap-4 rounded-2xl border border-slate-200 bg-white px-4 py-3.5 text-left shadow-sm transition hover:-translate-y-0.5 hover:border-[#00D4FF]/60 hover:shadow-md"
+            >
+              <span>
+                <span className="block text-sm font-black text-slate-800">Microsoft Copilot Adoption Workshop</span>
+                <span className="mt-0.5 block text-xs font-semibold text-slate-500">Open the existing workshop</span>
+              </span>
+              <ExternalLink className="size-4 shrink-0 text-[#00A6C7]" />
+            </a>
+            {futureService("AI Data Readiness")}
+            {futureService("Back-up and Business Continuity Assessment")}
+            {futureService("MSP / IT Services Evaluation")}
+          </div>
+        </section>
+
+        <section className="rounded-[30px] bg-white p-6 shadow-xl ring-1 ring-[#D9E7F5]">
+          <div className="rounded-[22px] bg-gradient-to-br from-[#071A3F] to-[#FF2AA0] p-6 text-white">
+            <p className="text-[10px] font-black uppercase tracking-[0.22em] text-white/75">Security leadership</p>
+            <h3 className="mt-2 text-3xl font-black tracking-[-0.04em]">Fractional CISO</h3>
+            <p className="mt-2 text-sm font-semibold text-white/80">Readiness assessments and assurance services for security controls, certification, and governance.</p>
+          </div>
+          <div className="mt-5 space-y-3">
+            {serviceButton("CIS Controls Benchmark", () => onBenchmark("cis"))}
+            {serviceButton("Cyber Essentials Readiness", () => onBenchmark("cyber-essentials"))}
+            {serviceButton("Cyber Essentials Plus Alignment", () => onBenchmark("cyber-essentials-plus"))}
+            {serviceButton("ISO 27001 — Gap Analysis", () => onBenchmark("iso-27001"))}
+            {futureService("M365 Tenancy Hardening")}
+            {futureService("Core IT Policy Review and Creation")}
+          </div>
+        </section>
+      </div>
+    </div>
+  );
+}
+
+function EmptyUpload({ onFile, onBlank }: { onFile: (file: File | null) => void; onBlank: () => void }) {
   return (
     <section className="mx-auto mt-10 max-w-4xl rounded-[30px] border-2 border-dashed border-[#7E3AED]/40 bg-white p-12 text-center shadow-xl">
       <div className="mx-auto grid size-20 place-items-center rounded-[24px] bg-[#EBF8FF] text-[#7E3AED]">
@@ -475,9 +508,6 @@ function EmptyUpload({ onFile, onBlank, onCompliance }: { onFile: (file: File | 
           <Plus className="size-4" /> Start blank audit
         </button>
       </div>
-      <button onClick={onCompliance} className="mt-4 inline-flex items-center gap-2 text-sm font-black text-[#071A3F]">
-        <ClipboardCheck className="size-4 text-[#7E3AED]" /> Open compliance benchmarks
-      </button>
       <div className="mt-8 flex items-center justify-center gap-2 text-xs font-bold text-slate-500">
         <ShieldCheck className="size-4 text-[#00D4FF]" />
         Parsed locally in this browser. Nothing is written to the Lifecycle app.
@@ -487,6 +517,7 @@ function EmptyUpload({ onFile, onBlank, onCompliance }: { onFile: (file: File | 
 }
 
 export function AuditBuilder() {
+  const [showHub, setShowHub] = React.useState(true);
   const [audit, setAudit] = React.useState<BrowserAudit | null>(null);
   const [clientName, setClientName] = React.useState("Temporary audit");
   const [activeView, setActiveView] = React.useState<ViewKey>("overview");
@@ -526,6 +557,7 @@ export function AuditBuilder() {
       const parsed = await parseAuditWorkbook(await file.arrayBuffer());
       const importedSheets = new Set(parsed.sheets.filter((sheet) => sheet.rowsImported > 0).map((sheet) => sheet.sheetName));
       setAudit(parsed);
+      setShowHub(false);
       setClientName(parsed.highLevel.schoolTrustName || parsed.highLevel.siteName || file.name.replace(/\.(xlsx|xls|xlsm|xlsb|csv)$/i, ""));
       navigate("overview");
       setStatus(`Loaded ${parsed.rows.length.toLocaleString("en-GB")} category-specific record(s) across ${importedSheets.size} audit sheet(s), plus High Level Info.`);
@@ -537,18 +569,30 @@ export function AuditBuilder() {
 
   function startBlankAudit() {
     setAudit(createBlankAudit());
+    setShowHub(false);
     setClientName("New client audit");
     navigate("high-level");
     setStatus("Blank audit started. Complete High Level Info, then add records in each category workspace.");
   }
 
-  function openCompliance() {
+  function openAuditService() {
+    setShowHub(false);
+    if (audit) {
+      navigate("overview");
+      setStatus("IT and Cyber Audit workspace opened.");
+    } else {
+      setStatus("Upload an existing audit workbook or start a blank audit.");
+    }
+  }
+
+  function openBenchmarkService(benchmarkId: BenchmarkId) {
     if (!audit) {
       setAudit(createBlankAudit());
       setClientName("New client assessment");
     }
-    navigate("compliance-overview");
-    setStatus("Compliance benchmark workspace opened. Results remain in this browser tab.");
+    setShowHub(false);
+    navigate(`compliance:${benchmarkId}`);
+    setStatus(`${BENCHMARKS[benchmarkId].shortTitle} assessment opened. Results remain in this browser tab.`);
   }
 
   function updateBenchmarkResponse(benchmarkId: BenchmarkId, questionId: string, patch: Partial<BenchmarkResponse>) {
@@ -608,6 +652,7 @@ export function AuditBuilder() {
 
   function reset() {
     setAudit(null);
+    setShowHub(true);
     setClientName("Temporary audit");
     navigate("overview");
     setStatus("Reset complete. No temporary audit data remains on this page.");
@@ -660,35 +705,42 @@ export function AuditBuilder() {
             <img src={`${import.meta.env.BASE_URL}unleashed-logo-white.png`} alt="Unleashed" className="h-auto w-44" />
             <div className="hidden h-10 w-px bg-white/20 sm:block" />
             <div>
-              <p className="text-[10px] font-black uppercase tracking-[0.28em] text-[#00D4FF]">Browser-only Lifecycle workspace</p>
-              <h1 className="mt-1 text-2xl font-black tracking-[-0.04em]">Client Audit Asset Management</h1>
+              <p className="text-[10px] font-black uppercase tracking-[0.28em] text-[#00D4FF]">{showHub ? "Fractional CTO & CISO services" : activeBenchmark ? "Fractional CISO assessment" : "Fractional CTO assessment"}</p>
+              <h1 className="mt-1 text-2xl font-black tracking-[-0.04em]">{showHub ? "Fractional C-Suite Services Hub" : activeBenchmark?.title ?? "Client Audit Asset Management"}</h1>
             </div>
           </div>
           <div className="flex flex-wrap items-center gap-2">
-            {audit && (
+            {!showHub && (
+              <button onClick={() => setShowHub(true)} className="inline-flex items-center gap-2 rounded-xl bg-white/10 px-4 py-2.5 text-sm font-black hover:bg-white/15">
+                <Home className="size-4" /> Services Hub
+              </button>
+            )}
+            {audit && !showHub && (
               <>
                 <label className="rounded-xl bg-white/10 px-3 py-2">
-                  <span className="sr-only">Audit name</span>
+                  <span className="sr-only">Client or assessment name</span>
                   <input value={clientName} onChange={(event) => setClientName(event.target.value)} className="w-56 bg-transparent text-sm font-bold text-white outline-none placeholder:text-white/50" />
                 </label>
-                <label className="inline-flex cursor-pointer items-center gap-2 rounded-xl bg-white/10 px-4 py-2.5 text-sm font-bold hover:bg-white/15">
-                  <Upload className="size-4" /> Import / replace workbook
-                  <input
-                    ref={fileInputRef}
-                    type="file"
-                    className="sr-only"
-                    accept=".xlsx,.xls,.xlsm,.xlsb,.csv,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-                    onChange={(event) => void handleUpload(event.target.files?.[0] ?? null)}
-                  />
-                </label>
                 {!complianceActive && (
-                  <button onClick={() => void exportPresentation()} disabled={presenting} className="inline-flex items-center gap-2 rounded-xl bg-[#7E3AED] px-4 py-2.5 text-sm font-black disabled:opacity-50">
-                    <Presentation className="size-4" /> {presenting ? "Generating PowerPoint..." : "PowerPoint report"}
-                  </button>
+                  <>
+                    <label className="inline-flex cursor-pointer items-center gap-2 rounded-xl bg-white/10 px-4 py-2.5 text-sm font-bold hover:bg-white/15">
+                      <Upload className="size-4" /> Import / replace workbook
+                      <input
+                        ref={fileInputRef}
+                        type="file"
+                        className="sr-only"
+                        accept=".xlsx,.xls,.xlsm,.xlsb,.csv,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                        onChange={(event) => void handleUpload(event.target.files?.[0] ?? null)}
+                      />
+                    </label>
+                    <button onClick={() => void exportPresentation()} disabled={presenting} className="inline-flex items-center gap-2 rounded-xl bg-[#7E3AED] px-4 py-2.5 text-sm font-black disabled:opacity-50">
+                      <Presentation className="size-4" /> {presenting ? "Generating PowerPoint..." : "PowerPoint report"}
+                    </button>
+                    <button onClick={reset} className="rounded-xl p-2.5 text-white/70 hover:bg-white/10 hover:text-white" aria-label="Reset">
+                      <RefreshCcw className="size-4" />
+                    </button>
+                  </>
                 )}
-                <button onClick={reset} className="rounded-xl p-2.5 text-white/70 hover:bg-white/10 hover:text-white" aria-label="Reset">
-                  <RefreshCcw className="size-4" />
-                </button>
               </>
             )}
           </div>
@@ -698,80 +750,59 @@ export function AuditBuilder() {
         </div>
       </header>
 
-      {!audit ? (
+      {showHub ? (
+        <ServicesHub onAudit={openAuditService} onBenchmark={openBenchmarkService} />
+      ) : activeBenchmark && activeBenchmarkId ? (
+        <div className="mx-auto max-w-[1600px] space-y-5 px-5 py-6">
+          <p className="rounded-2xl bg-white/80 px-5 py-3 text-sm font-bold text-slate-600 shadow-sm ring-1 ring-[#D9E7F5]">{status}</p>
+          <ComplianceAssessment
+            key={activeBenchmarkId}
+            benchmark={activeBenchmark}
+            responses={benchmarkResponses[activeBenchmarkId] ?? {}}
+            assessmentDepth={assessmentDepth}
+            onAssessmentDepthChange={setAssessmentDepth}
+            cisTier={cisTier}
+            onCisTierChange={setCisTier}
+            onChange={(questionId, patch) => updateBenchmarkResponse(activeBenchmarkId, questionId, patch)}
+            onReset={() => setBenchmarkResponses((current) => ({ ...current, [activeBenchmarkId]: {} }))}
+            onBack={() => setShowHub(true)}
+            onExport={() => void exportBenchmarkPresentation(activeBenchmarkId)}
+            exporting={presenting}
+          />
+        </div>
+      ) : !audit ? (
         <div className="px-5 pb-12">
-          <EmptyUpload onFile={(file) => void handleUpload(file)} onBlank={startBlankAudit} onCompliance={openCompliance} />
+          <EmptyUpload onFile={(file) => void handleUpload(file)} onBlank={startBlankAudit} />
           <p className="mx-auto mt-5 max-w-4xl rounded-2xl bg-white/80 px-5 py-3 text-center text-sm font-bold text-slate-600 ring-1 ring-[#D9E7F5]">{status}</p>
         </div>
       ) : (
         <div className="mx-auto grid max-w-[1800px] gap-5 px-4 py-5 lg:grid-cols-[270px_minmax(0,1fr)]">
           <aside className="h-fit rounded-[24px] bg-white p-3 shadow-xl ring-1 ring-[#D9E7F5] lg:sticky lg:top-5">
-            <p className="px-4 pb-2 text-[10px] font-black uppercase tracking-[0.2em] text-slate-400">Workspace</p>
-            <div className="grid gap-2">
+            <p className="px-4 pb-2 text-[10px] font-black uppercase tracking-[0.2em] text-slate-400">IT & Cyber Audit</p>
+            <button onClick={() => navigate("overview")} className={`flex w-full items-center gap-3 rounded-2xl px-4 py-3 text-left text-sm font-black ${activeView === "overview" ? "bg-[#071A3F] text-white" : "text-slate-700 hover:bg-slate-50"}`}>
+              <LayoutDashboard className="size-4" /> Audit overview
+            </button>
+            <button onClick={() => navigate("high-level")} className={`mt-1 flex w-full items-center gap-3 rounded-2xl px-4 py-3 text-left text-sm font-black ${activeView === "high-level" ? "bg-[#071A3F] text-white" : "text-slate-700 hover:bg-slate-50"}`}>
+              <Users className="size-4" /> High Level Info
+            </button>
+            <div className="my-3 h-px bg-slate-200" />
+            <p className="px-4 pb-2 text-[10px] font-black uppercase tracking-[0.2em] text-slate-400">Asset workspaces</p>
+            {summary.map((item) => (
               <button
-                onClick={() => navigate("overview")}
-                className={`flex w-full items-center gap-3 rounded-2xl px-4 py-3 text-left text-sm font-black ${!complianceActive ? "bg-[#071A3F] text-white" : "bg-slate-50 text-slate-700 hover:bg-slate-100"}`}
+                key={item.slug}
+                onClick={() => navigate(item.slug)}
+                className={`mb-1 flex w-full items-center justify-between rounded-2xl px-4 py-3 text-left ${activeView === item.slug ? "bg-[#7E3AED] text-white" : "text-slate-700 hover:bg-slate-50"}`}
               >
-                <LayoutDashboard className="size-4" /> IT & Cyber Audit
+                <span className="text-sm font-bold">{ASSET_CATEGORIES[item.slug].label}</span>
+                <span className={`rounded-full px-2 py-0.5 text-[10px] font-black ${activeView === item.slug ? "bg-white/20" : item.flagged ? "bg-red-100 text-red-700" : "bg-slate-100 text-slate-600"}`}>
+                  {item.total}
+                </span>
               </button>
-              <button
-                onClick={() => navigate("compliance-overview")}
-                className={`flex w-full items-center gap-3 rounded-2xl px-4 py-3 text-left text-sm font-black ${complianceActive ? "bg-[#7E3AED] text-white" : "bg-slate-50 text-slate-700 hover:bg-slate-100"}`}
-              >
-                <ClipboardCheck className="size-4" /> Compliance Benchmarks
-              </button>
+            ))}
+            <div className="mt-3 rounded-2xl bg-[#EBF8FF] p-4 text-xs font-semibold leading-5 text-slate-600">
+              <ShieldCheck className="mb-2 size-5 text-[#7E3AED]" />
+              All edits stay in this browser tab and are included in the exported report.
             </div>
-            <div className="my-4 h-px bg-slate-200" />
-
-            {complianceActive ? (
-              <>
-                <p className="px-4 pb-2 text-[10px] font-black uppercase tracking-[0.2em] text-slate-400">Compliance Benchmarks</p>
-                <button
-                  onClick={() => navigate("compliance-overview")}
-                  className={`flex w-full items-center gap-3 rounded-2xl px-4 py-3 text-left text-sm font-black ${activeView === "compliance-overview" ? "bg-[#071A3F] text-white" : "text-slate-700 hover:bg-slate-50"}`}
-                >
-                  <ClipboardCheck className="size-4" /> Benchmark overview
-                </button>
-                {BENCHMARK_IDS.map((id) => (
-                  <button
-                    key={id}
-                    onClick={() => navigate(`compliance:${id}`)}
-                    className={`mt-1 flex w-full items-center justify-between rounded-2xl px-4 py-3 text-left ${activeView === `compliance:${id}` ? "bg-[#00D4FF] text-[#071A3F]" : "text-slate-700 hover:bg-slate-50"}`}
-                  >
-                    <span className="text-sm font-bold">{BENCHMARKS[id].shortTitle}</span>
-                    <ChevronRight className="size-4" />
-                  </button>
-                ))}
-              </>
-            ) : (
-              <>
-                <p className="px-4 pb-2 text-[10px] font-black uppercase tracking-[0.2em] text-slate-400">IT & Cyber Audit</p>
-                <button onClick={() => navigate("overview")} className={`flex w-full items-center gap-3 rounded-2xl px-4 py-3 text-left text-sm font-black ${activeView === "overview" ? "bg-[#071A3F] text-white" : "text-slate-700 hover:bg-slate-50"}`}>
-                  <LayoutDashboard className="size-4" /> Audit overview
-                </button>
-                <button onClick={() => navigate("high-level")} className={`mt-1 flex w-full items-center gap-3 rounded-2xl px-4 py-3 text-left text-sm font-black ${activeView === "high-level" ? "bg-[#071A3F] text-white" : "text-slate-700 hover:bg-slate-50"}`}>
-                  <Users className="size-4" /> High Level Info
-                </button>
-                <div className="my-3 h-px bg-slate-200" />
-                <p className="px-4 pb-2 text-[10px] font-black uppercase tracking-[0.2em] text-slate-400">Asset workspaces</p>
-                {summary.map((item) => (
-                  <button
-                    key={item.slug}
-                    onClick={() => navigate(item.slug)}
-                    className={`mb-1 flex w-full items-center justify-between rounded-2xl px-4 py-3 text-left ${activeView === item.slug ? "bg-[#7E3AED] text-white" : "text-slate-700 hover:bg-slate-50"}`}
-                  >
-                    <span className="text-sm font-bold">{ASSET_CATEGORIES[item.slug].label}</span>
-                    <span className={`rounded-full px-2 py-0.5 text-[10px] font-black ${activeView === item.slug ? "bg-white/20" : item.flagged ? "bg-red-100 text-red-700" : "bg-slate-100 text-slate-600"}`}>
-                      {item.total}
-                    </span>
-                  </button>
-                ))}
-                <div className="mt-3 rounded-2xl bg-[#EBF8FF] p-4 text-xs font-semibold leading-5 text-slate-600">
-                  <ShieldCheck className="mb-2 size-5 text-[#7E3AED]" />
-                  All edits stay in this browser tab and are included in the exported report.
-                </div>
-              </>
-            )}
           </aside>
 
           <section className="min-w-0 space-y-5">
@@ -848,27 +879,6 @@ export function AuditBuilder() {
                   </div>
                 </div>
               </>
-            )}
-
-            {activeView === "compliance-overview" && (
-              <ComplianceOverview onOpen={(id) => navigate(`compliance:${id}`)} />
-            )}
-
-            {activeBenchmark && activeBenchmarkId && (
-              <ComplianceAssessment
-                key={activeBenchmarkId}
-                benchmark={activeBenchmark}
-                responses={benchmarkResponses[activeBenchmarkId] ?? {}}
-                assessmentDepth={assessmentDepth}
-                onAssessmentDepthChange={setAssessmentDepth}
-                cisTier={cisTier}
-                onCisTierChange={setCisTier}
-                onChange={(questionId, patch) => updateBenchmarkResponse(activeBenchmarkId, questionId, patch)}
-                onReset={() => setBenchmarkResponses((current) => ({ ...current, [activeBenchmarkId]: {} }))}
-                onBack={() => navigate("compliance-overview")}
-                onExport={() => void exportBenchmarkPresentation(activeBenchmarkId)}
-                exporting={presenting}
-              />
             )}
 
             {activeView === "high-level" && (
