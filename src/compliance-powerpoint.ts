@@ -2,6 +2,7 @@ import type PptxGenJS from "pptxgenjs";
 import type { AssessmentAnswer, AssessmentDepth, BenchmarkDefinition } from "./compliance-benchmarks";
 import { AI_ORGANISATION_FIELDS, AI_REMEDIATION_PHASES, AI_SCORE_RATINGS, calculateAiReadiness, collectAiFindings, type AiFinding, type AiScoreValue } from "./ai-data-readiness";
 import { downloadBlob } from "./download-file";
+import { MSP_SECTION_CAPTURE, formatGbp, mspSectionNotesKey, summariseServices, type MspQuestionExtras, type ServiceRow } from "./msp-review";
 
 const COLORS = {
   navy: "071A3F",
@@ -15,7 +16,7 @@ const COLORS = {
   line: "D9E7F5",
 };
 
-type BenchmarkResponse = { answer: AssessmentAnswer; evidence: string; score?: AiScoreValue; finding?: Partial<AiFinding> };
+type BenchmarkResponse = { answer: AssessmentAnswer; evidence: string; score?: AiScoreValue; finding?: Partial<AiFinding>; extras?: Partial<MspQuestionExtras> };
 
 function scoreLabel(score: AiScoreValue): string {
   if (score === "na") return "N/A";
@@ -67,6 +68,7 @@ export async function exportCompliancePowerPoint(
   cisTier: 1 | 2 | 3,
   assessmentDepth: AssessmentDepth,
   organisation: Record<string, string> = {},
+  serviceRows: ServiceRow[] = [],
 ) {
   const { default: PptxGenJS } = await import("pptxgenjs");
   const pptx = new PptxGenJS();
@@ -85,6 +87,7 @@ export async function exportCompliancePowerPoint(
   const readiness = applicable > 0 ? Math.round(((counts.pass + counts.partial * 0.5) / applicable) * 100) : 0;
   const passReady = questions.length > 0 && assessed === questions.length && counts.partial === 0 && counts.fail === 0;
   const maturity = benchmark.scoring === "maturity";
+  const isMsp = benchmark.id === "msp-supplier-review";
   const aiResult = maturity ? calculateAiReadiness(questions, (id) => responses[id]?.score) : null;
 
   pptx.layout = "LAYOUT_WIDE";
@@ -150,7 +153,7 @@ export async function exportCompliancePowerPoint(
     ? aiResult.scored === 0 ? "NOT YET SCORED" : `${aiResult.band.status.toUpperCase()} — ${aiResult.band.label.toUpperCase()}`
     : passReady ? "PASS-READY" : assessed > 0 ? "FAIL / NOT READY" : "NOT YET ASSESSED";
   summary.addShape(pptx.ShapeType.roundRect, { x: 0.55, y: 2.65, w: 12.2, h: 1.15, rectRadius: 0.06, fill: { color: COLORS.white }, line: { color: resultColor, pt: 2 } });
-  summary.addText(aiResult ? "WEIGHTED AI READINESS RESULT" : "INDICATIVE CURRENT-STATE RESULT", { x: 0.82, y: 2.92, w: 4.2, h: 0.18, fontSize: 9, bold: true, color: resultColor, margin: 0 });
+  summary.addText(aiResult ? (isMsp ? "WEIGHTED SUPPLIER REVIEW RESULT" : "WEIGHTED AI READINESS RESULT") : "INDICATIVE CURRENT-STATE RESULT", { x: 0.82, y: 2.92, w: 4.2, h: 0.18, fontSize: 9, bold: true, color: resultColor, margin: 0 });
   summary.addText(resultText, { x: 0.82, y: 3.2, w: 11.4, h: 0.3, fontSize: 21, bold: true, color: resultColor, margin: 0 });
   if (aiResult && aiResult.criticalControls.length > 0) {
     summary.addText(`Critical deficiency (score 0): ${aiResult.criticalControls.map((question) => question.reference).join(", ")} — result capped at Amber.`, { x: 5.4, y: 2.92, w: 7.2, h: 0.18, fontSize: 9, bold: true, color: "B91C1C", align: "right", margin: 0 });
@@ -178,7 +181,7 @@ export async function exportCompliancePowerPoint(
     addHeader(orgSlide, "Organisation Information", `${clientName} · ${benchmark.title}`, COLORS.cyan);
     orgSlide.addTable(tableRows(
       ["Field", "Response"],
-      AI_ORGANISATION_FIELDS.map((field) => [`${field.id} · ${field.label}`, organisation[field.id]?.trim() || "Not recorded"]),
+      (benchmark.organisationFields ?? AI_ORGANISATION_FIELDS).map((field) => [`${field.id} · ${field.label}`, organisation[field.id]?.trim() || "Not recorded"]),
     ), { x: 0.55, y: 1.3, w: 12.2, colW: [4.2, 8], rowH: 0.34, fontSize: 8.5, margin: 0.05, border: { color: COLORS.line, pt: 0.8 }, autoPage: false });
     addFooter(orgSlide, "Organisation information is not scored.");
   }
@@ -218,7 +221,94 @@ export async function exportCompliancePowerPoint(
     }
   }
 
-  if (aiResult) {
+  if (isMsp) {
+    const noted = sections.filter((section) => organisation[mspSectionNotesKey(section)]?.trim());
+    if (noted.length > 0) {
+      const slide = pptx.addSlide();
+      addHeader(slide, "Section Supporting Data", `${clientName} · ${benchmark.shortTitle}`, COLORS.cyan);
+      slide.addTable(tableRows(
+        ["Section", "Supporting data"],
+        noted.map((section) => [`${section}${MSP_SECTION_CAPTURE[section] ? `\n${MSP_SECTION_CAPTURE[section]}` : ""}`, organisation[mspSectionNotesKey(section)].trim()]),
+      ), { x: 0.55, y: 1.3, w: 12.2, colW: [4.2, 8], fontSize: 8, margin: 0.05, border: { color: COLORS.line, pt: 0.8 }, autoPage: true });
+    }
+
+    const flagged = questions.filter((question) => {
+      const extras = responses[question.id]?.extras;
+      return extras && Object.values(extras).some((value) => value?.trim());
+    });
+    for (let start = 0; start < flagged.length; start += 4) {
+      const page = flagged.slice(start, start + 4);
+      const slide = pptx.addSlide();
+      addHeader(slide, `Assessor Findings (${Math.floor(start / 4) + 1}/${Math.ceil(flagged.length / 4)})`, `${clientName} · ${benchmark.shortTitle}`, COLORS.pink);
+      slide.addTable(tableRows(
+        ["Question", "Importance / position", "Risk / issue", "Recommendation", "Future requirement / customer comments"],
+        page.map((question) => {
+          const extras = responses[question.id]?.extras ?? {};
+          return [
+            `${question.reference}\n${question.prompt}`,
+            `${extras.importance || "—"}\n${extras.position || "—"}`,
+            extras.risk || "—",
+            extras.recommendation || "—",
+            [extras.futureRequirement, extras.customerComments].filter(Boolean).join("\n\n") || "—",
+          ];
+        }),
+      ), { x: 0.55, y: 1.3, w: 12.2, h: 5.75, colW: [3.2, 1.5, 2.5, 2.5, 2.5], rowH: 1.3, fontSize: 8, margin: 0.05, border: { color: COLORS.line, pt: 0.8 }, autoPage: false });
+      addFooter(slide, `${page.length} of ${flagged.length} annotated question(s)`);
+    }
+
+    const costs = summariseServices(serviceRows);
+    const register = pptx.addSlide();
+    addHeader(register, "Commercial Summary", `${clientName} · Service, product & cost register`, COLORS.purple);
+    register.addTable(tableRows(
+      ["Measure", "Value"],
+      [
+        ["Monthly recurring cost", formatGbp(costs.totals.monthlyRecurring)],
+        ["Annual recurring cost", formatGbp(costs.totals.annualRecurring)],
+        ["Usage-based cost / year", formatGbp(costs.totals.usage)],
+        ["One-off + upfront cost", formatGbp(costs.totals.oneOff + costs.totals.upfront)],
+        ["First-year cost", formatGbp(costs.totals.firstYear)],
+        ["3-year cost", formatGbp(costs.totals.threeYear)],
+        ["Total contract value", formatGbp(costs.totals.contractValue)],
+        ["Unused licence cost / year", formatGbp(costs.totals.unusedLicenceCost)],
+      ],
+    ), { x: 0.55, y: 1.3, w: 5.2, colW: [3.2, 2], rowH: 0.34, fontSize: 9, margin: 0.05, border: { color: COLORS.line, pt: 0.8 }, autoPage: false });
+    register.addTable(tableRows(
+      ["Category", "Services", "Annual recurring"],
+      costs.byCategory.filter((item) => item.count > 0).map((item) => [item.category, String(item.count), formatGbp(item.annual)]),
+    ), { x: 6.1, y: 1.3, w: 6.65, colW: [3.6, 1.2, 1.85], rowH: 0.3, fontSize: 9, margin: 0.05, border: { color: COLORS.line, pt: 0.8 }, autoPage: false });
+    const names = (rows: ServiceRow[]) => rows.map((row) => row.name || row.product).join(", ") || "None";
+    register.addTable(tableRows(
+      ["Optimisation flag", "Detail"],
+      [
+        ["Unused licences", names(costs.unusedLicences)],
+        ["Possible duplicates", costs.duplicates.join(", ") || "None"],
+        ["Unknown costs", names(costs.unknownCosts)],
+        ["Unknown renewal dates", names(costs.unknownRenewals)],
+        ["Renewing within 6 months", names(costs.renewingSoon)],
+        ["End of support within 12 months", names(costs.endOfSupport)],
+      ],
+    ), { x: 0.55, y: 4.3, w: 12.2, colW: [3.2, 9], rowH: 0.36, fontSize: 9, margin: 0.05, border: { color: COLORS.line, pt: 0.8 }, autoPage: false });
+    addFooter(register, `${serviceRows.filter((row) => row.name.trim() || row.product.trim()).length} service(s) recorded in the register.`);
+
+    const listed = serviceRows.filter((row) => row.name.trim() || row.product.trim());
+    for (let start = 0; start < listed.length; start += 8) {
+      const page = listed.slice(start, start + 8);
+      const slide = pptx.addSlide();
+      addHeader(slide, `Service Register (${Math.floor(start / 8) + 1}/${Math.ceil(listed.length / 8)})`, `${clientName} · ${benchmark.shortTitle}`, COLORS.cyan);
+      slide.addTable(tableRows(
+        ["Service", "Category / supplier", "Annual cost", "Renewal", "Outcome"],
+        page.map((row) => [
+          `${row.name || row.product}${row.owner ? `\nOwner: ${row.owner}` : ""}`,
+          `${row.category}\n${row.supplier || "—"}`,
+          formatGbp(summariseServices([row]).totals.firstYear),
+          row.renewalDate || row.contractEnd || "Unknown",
+          row.outcome || "Not decided",
+        ]),
+      ), { x: 0.55, y: 1.3, w: 12.2, colW: [3.6, 3, 1.8, 1.8, 2], rowH: 0.6, fontSize: 9, margin: 0.05, border: { color: COLORS.line, pt: 0.8 }, autoPage: false });
+    }
+  }
+
+  if (aiResult && !isMsp) {
     const findings = collectAiFindings(questions, (id) => responses[id]);
     const roadmap = pptx.addSlide();
     addHeader(roadmap, "Remediation Roadmap", `${clientName} · Secure → Clean → Govern → Enable → Measure`, COLORS.pink);

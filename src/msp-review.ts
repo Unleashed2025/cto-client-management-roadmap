@@ -1,4 +1,4 @@
-import { AI_SECTION_WEIGHTS } from "./ai-data-readiness";
+import { AI_SECTION_WEIGHTS, type OrganisationField } from "./ai-data-readiness";
 import type { BenchmarkQuestion } from "./compliance-benchmarks";
 
 export const MSP_SCORE_RATINGS = [
@@ -226,6 +226,24 @@ export const MSP_PRE_QUESTIONS: BenchmarkQuestion[] = SECTIONS.flatMap((section)
 );
 
 for (const section of SECTIONS) AI_SECTION_WEIGHTS[section.title] = section.weight;
+
+export const MSP_SECTION_CAPTURE: Record<string, string> = Object.fromEntries(
+  SECTIONS.filter((section) => section.capture).map((section) => [section.title, section.capture as string]),
+);
+export const mspSectionNotesKey = (section: string) => `sec:${section}`;
+
+export const MSP_ORGANISATION_FIELDS: OrganisationField[] = [
+  { id: "MORG-01", label: "Organisation name", type: "text" },
+  { id: "MORG-02", label: "Assessment date", type: "date" },
+  { id: "MORG-03", label: "Assessor", type: "text" },
+  { id: "MORG-04", label: "Primary customer contact", type: "text" },
+  { id: "MORG-05", label: "Number of users", type: "number" },
+  { id: "MORG-06", label: "Number of sites", type: "number" },
+  { id: "MORG-07", label: "Current MSP / primary IT supplier", type: "text" },
+  { id: "MORG-08", label: "Purpose (supplier review, health check, gap analysis, tender)", type: "text" },
+  { id: "MORG-09", label: "Business drivers and known concerns", type: "textarea" },
+  { id: "MORG-10", label: "Assessment scope and exclusions", type: "textarea" },
+];
 
 export const SERVICE_CATEGORIES = [
   "MSP / support",

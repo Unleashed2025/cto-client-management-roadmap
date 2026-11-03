@@ -58,10 +58,10 @@ import {
   type AiScoreValue,
 } from "./ai-data-readiness";
 import { MspRegister } from "./MspRegister";
-import type { ServiceRow } from "./msp-review";
+import { EMPTY_MSP_EXTRAS, MSP_IMPORTANCE, MSP_POSITIONS, MSP_SECTION_CAPTURE, mspSectionNotesKey, type MspQuestionExtras, type ServiceRow } from "./msp-review";
 
 type ViewKey = "overview" | "high-level" | "compliance-overview" | `compliance:${BenchmarkId}` | AssetCategorySlug;
-type BenchmarkResponse = { answer: AssessmentAnswer; evidence: string; score?: AiScoreValue; finding?: Partial<AiFinding> };
+type BenchmarkResponse = { answer: AssessmentAnswer; evidence: string; score?: AiScoreValue; finding?: Partial<AiFinding>; extras?: Partial<MspQuestionExtras> };
 type BenchmarkResponseSet = Record<string, BenchmarkResponse>;
 type OrganisationValues = Record<string, string>;
 
@@ -278,6 +278,8 @@ function ComplianceAssessment({
   onOrganisationChange: (fieldId: string, value: string) => void;
 }) {
   const maturity = benchmark.scoring === "maturity";
+  const isMsp = benchmark.id === "msp-supplier-review";
+  const orgFields = benchmark.organisationFields ?? AI_ORGANISATION_FIELDS;
   const assessmentQuestions = assessmentDepth === "pre" ? benchmark.preQuestions : benchmark.fullQuestions;
   const visibleQuestions = assessmentQuestions.filter((question) => benchmark.id !== "cis" || assessmentDepth === "pre" || (question.tier ?? 1) <= cisTier);
   const result = visibleQuestions.reduce((summary, question) => {
@@ -345,7 +347,7 @@ function ComplianceAssessment({
         <section className="rounded-[26px] bg-white p-6 shadow-xl ring-1 ring-[#D9E7F5]">
           <h3 className="text-lg font-black">Organisation information <span className="text-xs font-bold text-slate-400">(not scored)</span></h3>
           <div className="mt-4 grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-            {AI_ORGANISATION_FIELDS.map((field) => (
+            {orgFields.map((field) => (
               <label key={field.id} className={`space-y-1.5 ${field.type === "textarea" ? "md:col-span-2 xl:col-span-3" : ""}`}>
                 <span className="text-xs font-black uppercase tracking-[0.12em] text-slate-500">{field.id} · {field.label}</span>
                 {field.type === "textarea" ? (
@@ -364,7 +366,7 @@ function ComplianceAssessment({
               </div>
             ))}
           </div>
-          <p className="mt-3 text-xs font-bold text-slate-500">Minimum AI-ready score per control: {AI_MINIMUM_READY_SCORE}.</p>
+          <p className="mt-3 text-xs font-bold text-slate-500">Minimum {isMsp ? "acceptable" : "AI-ready"} score per question: {AI_MINIMUM_READY_SCORE}.</p>
         </section>
       )}
 
@@ -374,7 +376,7 @@ function ComplianceAssessment({
           ["Scored", `${aiResult.scored}/${visibleQuestions.length}`, "bg-[#7E3AED] text-white"],
           ["At or above minimum", aiResult.scored - aiResult.belowMinimum, "bg-emerald-600 text-white"],
           ["Below minimum", aiResult.belowMinimum, "bg-[#FF2AA0] text-white"],
-          ["AI readiness", `${aiResult.percent}%`, "bg-[#00D4FF] text-[#071A3F]"],
+          [isMsp ? "Supplier score" : "AI readiness", `${aiResult.percent}%`, "bg-[#00D4FF] text-[#071A3F]"],
         ] : [
           ["Questions", visibleQuestions.length, "bg-[#071A3F] text-white"],
           ["Assessed", `${assessed}/${visibleQuestions.length}`, "bg-[#7E3AED] text-white"],
@@ -391,14 +393,14 @@ function ComplianceAssessment({
 
       {aiResult ? (
         <div className={`rounded-[24px] border-2 p-5 ${aiResult.scored === 0 ? "border-slate-200 bg-white text-slate-700" : aiResult.band.status === "Green" ? "border-emerald-300 bg-emerald-50 text-emerald-900" : aiResult.band.status === "Amber" ? "border-amber-300 bg-amber-50 text-amber-900" : "border-red-200 bg-red-50 text-red-900"}`}>
-          <p className="text-xs font-black uppercase tracking-[0.16em]">Weighted AI readiness result</p>
+          <p className="text-xs font-black uppercase tracking-[0.16em]">{isMsp ? "Weighted supplier review result" : "Weighted AI readiness result"}</p>
           <p className="mt-1 text-2xl font-black">{aiResult.scored === 0 ? "NOT YET SCORED" : `${aiResult.band.status.toUpperCase()} — ${aiResult.band.label.toUpperCase()}`}</p>
           <p className="mt-2 text-sm font-semibold">
             {aiResult.criticalControls.length > 0
               ? `${aiResult.criticalControls.length} control(s) scored 0 (critical deficiency: ${aiResult.criticalControls.map((question) => question.reference).join(", ")}). The overall result is capped at Amber until these are resolved.`
               : aiResult.scored === 0
                 ? "Score each control 0–5 and record evidence to calculate weighted readiness."
-                : `${aiResult.belowMinimum} of ${aiResult.scored} scored controls are below the minimum AI-ready score of ${AI_MINIMUM_READY_SCORE}.`}
+                : `${aiResult.belowMinimum} of ${aiResult.scored} scored controls are below the minimum {isMsp ? "acceptable" : "AI-ready"} score of ${AI_MINIMUM_READY_SCORE}.`}
           </p>
           <div className="mt-4 grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
             {aiResult.sectionScores.map((item) => (
@@ -428,6 +430,18 @@ function ComplianceAssessment({
           <div className="border-b border-slate-200 bg-[#071A3F] px-6 py-4 text-white">
             <h3 className="font-black">{section}</h3>
           </div>
+          {isMsp && (
+            <label className="block space-y-1.5 border-b border-slate-200 bg-slate-50 px-6 py-4">
+              <span className="text-xs font-black uppercase tracking-[0.12em] text-slate-500">Supporting data{MSP_SECTION_CAPTURE[section] ? ` · ${MSP_SECTION_CAPTURE[section]}` : ""}</span>
+              <textarea
+                value={organisation[mspSectionNotesKey(section)] ?? ""}
+                onChange={(event) => onOrganisationChange(mspSectionNotesKey(section), event.target.value)}
+                rows={3}
+                placeholder="Record SLA metrics, licence/device/service details and other supporting data for this section..."
+                className="w-full resize-y rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm outline-none focus:border-[#7E3AED]"
+              />
+            </label>
+          )}
           <div className="divide-y divide-slate-200">
             {visibleQuestions.filter((question) => question.section === section).map((question, index) => {
               const response = responses[question.id] ?? { answer: "not-assessed" as AssessmentAnswer, evidence: "" };
@@ -492,7 +506,26 @@ function ComplianceAssessment({
                       className="w-full resize-y rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm outline-none focus:border-[#7E3AED]"
                     />
                   </label>
-                  {maturity && typeof response.score === "number" && response.score < AI_MINIMUM_READY_SCORE && (
+                  {isMsp && (
+                    <div className="grid gap-3 md:grid-cols-2 xl:col-span-3 xl:grid-cols-4">
+                      {([["importance", "Importance", MSP_IMPORTANCE], ["position", "Current position", MSP_POSITIONS]] as const).map(([key, label, options]) => (
+                        <label key={key} className="space-y-1">
+                          <span className={FINDING_LABEL}>{label}</span>
+                          <select value={response.extras?.[key] ?? ""} onChange={(event) => onChange(question.id, { extras: { ...response.extras, [key]: event.target.value } })} className={FINDING_INPUT}>
+                            <option value="">Select…</option>
+                            {options.map((option) => <option key={option}>{option}</option>)}
+                          </select>
+                        </label>
+                      ))}
+                      {([["risk", "Risk / issue"], ["recommendation", "Recommendation"], ["futureRequirement", "Future requirement"], ["customerComments", "Customer comments"]] as const).map(([key, label]) => (
+                        <label key={key} className="space-y-1 md:col-span-2">
+                          <span className={FINDING_LABEL}>{label}</span>
+                          <textarea rows={2} value={response.extras?.[key] ?? EMPTY_MSP_EXTRAS[key]} onChange={(event) => onChange(question.id, { extras: { ...response.extras, [key]: event.target.value } })} className={FINDING_INPUT} />
+                        </label>
+                      ))}
+                    </div>
+                  )}
+                  {maturity && !isMsp && typeof response.score === "number" && response.score < AI_MINIMUM_READY_SCORE && (
                     <FindingPanel
                       reference={question.reference}
                       score={response.score}
@@ -507,7 +540,7 @@ function ComplianceAssessment({
         </section>
       ))}
 
-      {aiResult && <RemediationRoadmap findings={collectAiFindings(visibleQuestions, (id) => responses[id])} />}
+      {aiResult && !isMsp && <RemediationRoadmap findings={collectAiFindings(visibleQuestions, (id) => responses[id])} />}
     </div>
   );
 }
@@ -936,7 +969,7 @@ export function AuditBuilder() {
   async function exportBenchmarkPresentation(benchmarkId: BenchmarkId) {
     setPresenting(true);
     try {
-      await exportCompliancePowerPoint(BENCHMARKS[benchmarkId], benchmarkResponses[benchmarkId] ?? {}, clientName, cisTier, assessmentDepth, organisation);
+      await exportCompliancePowerPoint(BENCHMARKS[benchmarkId], benchmarkResponses[benchmarkId] ?? {}, clientName, cisTier, assessmentDepth, organisation, serviceRows);
     } catch (error) {
       console.error("Unable to generate compliance PowerPoint report", error);
       setStatus("The compliance PowerPoint report could not be generated. Review the browser console for details and try again.");

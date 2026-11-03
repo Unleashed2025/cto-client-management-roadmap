@@ -1,7 +1,7 @@
 import { DANZELL_QUESTIONS } from "./cyber-essentials-danzell";
 import { ISO_27001_ANNEX_A_QUESTIONS } from "./iso-27001-annex-a";
-import { AI_DATA_READINESS_PRE_QUESTIONS, AI_DATA_READINESS_QUESTIONS } from "./ai-data-readiness";
-import { MSP_PRE_QUESTIONS, MSP_QUESTIONS } from "./msp-review";
+import { AI_DATA_READINESS_PRE_QUESTIONS, AI_DATA_READINESS_QUESTIONS, type OrganisationField } from "./ai-data-readiness";
+import { MSP_ORGANISATION_FIELDS, MSP_PRE_QUESTIONS, MSP_QUESTIONS } from "./msp-review";
 
 export type BenchmarkId = "cis" | "cyber-essentials" | "cyber-essentials-plus" | "iso-27001" | "ai-data-readiness" | "msp-supplier-review";
 export type AssessmentAnswer = "not-assessed" | "pass" | "partial" | "fail" | "not-applicable";
@@ -30,6 +30,7 @@ export interface BenchmarkDefinition {
   sourceUrl: string;
   notice: string;
   scoring?: "maturity";
+  organisationFields?: OrganisationField[];
   preQuestions: BenchmarkQuestion[];
   fullQuestions: BenchmarkQuestion[];
 }
@@ -365,6 +366,7 @@ export const BENCHMARKS: Record<BenchmarkId, BenchmarkDefinition> = {
     sourceUrl: "https://unleashed2025.github.io/cto-client-management-roadmap/",
     notice: "Unleashed assessment methodology. Sections are weighted (Cyber Security 14%, Support 12%, Backup 12%, others 6–10%). A question scored 0 caps the overall result at Amber. Record services, licences and costs in the Service, Product & Cost Register.",
     scoring: "maturity",
+    organisationFields: MSP_ORGANISATION_FIELDS,
     preQuestions: MSP_PRE_QUESTIONS,
     fullQuestions: MSP_QUESTIONS,
   },
