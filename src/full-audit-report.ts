@@ -3,7 +3,6 @@ import {
   ASSET_CATEGORY_SLUGS,
   categoryGroups,
   displayValue,
-  migrationPlatform,
   type AssetCategorySlug,
   type AuditRow,
   type BrowserAudit,
@@ -28,11 +27,28 @@ export const REPORT_STRUCTURE = [
   "Executive Summary",
   "CTO Summary",
   "DfE Alignment",
-  "Category & Priority Distribution",
+  "High Level Information",
+  "Data Infrastructure — highlights",
+  "Data Infrastructure — strategy",
+  "Network & WiFi — highlights",
+  "Network & WiFi — strategy",
+  "Client Compute — highlights",
+  "Client Compute — strategy",
+  "Software — highlights",
+  "Software — strategy",
+  "Cyber Security Controls — highlights",
+  "Cyber Security Controls — strategy",
   "Representative Audited Items",
   "Representative Flagged Items",
-  "Migration Readiness",
 ] as const;
+
+const CATEGORY_COLOR: Record<AssetCategorySlug, [number, number, number]> = {
+  "data-infra": BRAND.navy,
+  network: BRAND.cyan,
+  "client-compute": BRAND.purple,
+  software: BRAND.purple,
+  cyber: BRAND.orange,
+};
 
 export interface ReportCategorySummary {
   slug: AssetCategorySlug;
@@ -52,7 +68,20 @@ export interface ReportModel {
   totalRows: number;
   totalFlagged: number;
   populatedSheets: number;
-  migrationSummary: Array<{ platform: string; total: number; flagged: number; ready: number; analysis: number; issue: number; postProject: number; highCritical: number }>;
+}
+
+export interface CategoryReportSection {
+  slug: AssetCategorySlug;
+  label: string;
+  total: number;
+  flagged: number;
+  warnings: number;
+  groups: Array<{ label: string; total: number; flagged: number }>;
+  whatThisMeans: string;
+  whatIfNothing: string;
+  plan3Months: string[];
+  plan12Months: string[];
+  plan2Years: string[];
 }
 
 function text(value: unknown): string {
@@ -88,6 +117,52 @@ function prioritySample(rows: AuditRow[], maximum: number): AuditRow[] {
   return balancedSample(priority, maximum);
 }
 
+function categoryNarrative(slug: AssetCategorySlug, total: number, flagged: number, warnings: number): Pick<CategoryReportSection, "whatThisMeans" | "whatIfNothing" | "plan3Months" | "plan12Months" | "plan2Years"> {
+  const position = `${flagged} flagged and ${warnings} warning item${flagged + warnings === 1 ? "" : "s"} from ${total} audited record${total === 1 ? "" : "s"}`;
+  switch (slug) {
+    case "data-infra":
+      return {
+        whatThisMeans: `The infrastructure estate has ${position}. Server, virtualisation and storage lifecycle evidence should drive the cloud, support and replacement plan rather than allowing hardware decisions to become reactive.`,
+        whatIfNothing: "Unsupported infrastructure, unclear warranty positions and ageing operating systems can turn planned migration work into urgent break/fix activity, increasing outage risk and weakening budget control.",
+        plan3Months: ["Validate warranty, support and operating-system evidence for every flagged infrastructure item.", "Confirm service owners and identify quick fixes, temporary mitigations and migration candidates."],
+        plan12Months: ["Convert priority remediation into budgeted server, storage or cloud migration projects.", "Move suitable workloads toward SaaS or Azure while keeping retained on-premises services fully supported."],
+        plan2Years: ["Operate a cloud-first, evidence-led infrastructure lifecycle with only justified services retained on premises.", "Re-baseline the service catalogue and infrastructure roadmap annually."],
+      };
+    case "network":
+      return {
+        whatThisMeans: `The network and Wi-Fi estate has ${position}. Lifecycle, firmware, resilience and wireless-standard evidence should be reviewed together so replacements and configuration improvements are correctly separated.`,
+        whatIfNothing: "Known lifecycle gaps or incomplete support evidence can become outages, security exposure or rushed replacement decisions, particularly around firewalls, core switching and wireless coverage.",
+        plan3Months: ["Verify warranty, support-life, service-life and firmware evidence for flagged or unknown devices.", "Prioritise internet-facing, core and single-point-of-failure risks."],
+        plan12Months: ["Deliver evidence-backed firewall, switching and wireless remediation in planned phases.", "Standardise firmware, resilience and Wi-Fi capability across the estate."],
+        plan2Years: ["Maintain a rolling network lifecycle and capacity plan, including Wi-Fi readiness and resilience.", "Re-survey coverage and revalidate support status as part of the annual audit cycle."],
+      };
+    case "client-compute":
+      return {
+        whatThisMeans: `The endpoint estate has ${position}. The priority is to keep operating systems supported, records accurate and refresh activity predictable without replacing healthy devices unnecessarily.`,
+        whatIfNothing: "Unsupported or poorly recorded devices create hidden patch, reliability and user-experience risk. Delayed action can produce a large refresh backlog and unplanned capital pressure.",
+        plan3Months: ["Confirm operating-system and ownership data for flagged or incomplete endpoint records.", "Agree the replacement order for genuinely unsupported devices and protect teaching and operational continuity."],
+        plan12Months: ["Complete priority OS and device refresh work through budgeted deployment waves.", "Keep asset records, patching and standard-build controls aligned to the refreshed estate."],
+        plan2Years: ["Run a rolling endpoint lifecycle so supported operating systems and standard builds are maintained.", "Review endpoint health annually to prevent another unsupported-device backlog."],
+      };
+    case "software":
+      return {
+        whatThisMeans: `The software register has ${position}. Ownership, supplier, support, renewal and overlap information should be kept current so commercial and technical decisions can be made before deadlines.`,
+        whatIfNothing: "Unclear ownership and renewal visibility can lead to duplicated spend, surprise renewals, unmanaged applications and rushed migration decisions.",
+        plan3Months: ["Confirm owners, renewal dates, support positions and data held for incomplete or flagged systems.", "Review near-term renewals and obvious duplicate tools while there is time to compare options."],
+        plan12Months: ["Maintain a rolling contract calendar and consolidate overlapping tools where the business case is clear.", "Resolve support and governance gaps before they become urgent commercial decisions."],
+        plan2Years: ["Keep a controlled application estate with named ownership, known data and planned renewals.", "Repeat the consolidation and supplier-risk review as services and requirements change."],
+      };
+    case "cyber":
+      return {
+        whatThisMeans: `The cyber-control baseline has ${position}. Missing, partial or weakly evidenced controls should be closed before additional tools are layered onto the environment.`,
+        whatIfNothing: "Control gaps and weak evidence can leave the organisation exposed while making assurance difficult to prove. Tool sprawl without disciplined operation can add cost without reducing risk.",
+        plan3Months: ["Assign owners and dates to every missing or partial baseline control.", "Evidence MFA, endpoint protection, backup, email security, privileged access and recovery testing."],
+        plan12Months: ["Close the highest-risk control gaps and align the evidence set to Cyber Essentials and DfE expectations.", "Establish repeatable testing and reporting for backup, recovery and security operations."],
+        plan2Years: ["Maintain an assured, measured cyber baseline with clear control ownership and testing cadence.", "Review tool overlap and mature toward independently validated assurance."],
+      };
+  }
+}
+
 export function buildReportModel(audit: BrowserAudit, clientName: string): ReportModel {
   const categorySummary = ASSET_CATEGORY_SLUGS.map((slug) => {
     const rows = audit.rows.filter((row) => row.auditCategory === slug);
@@ -110,20 +185,6 @@ export function buildReportModel(audit: BrowserAudit, clientName: string): Repor
   });
   const inventoryCategories: AssetCategorySlug[] = ["data-infra", "network", "client-compute"];
   const inventoryRows = audit.rows.filter((row) => inventoryCategories.includes(row.auditCategory));
-  const migrationRows = audit.rows.filter((row) => row.auditCategory === "migration");
-  const migrationSummary = ["Microsoft", "Google", "Other"].map((platform) => {
-    const rows = migrationRows.filter((row) => migrationPlatform(row) === platform);
-    return {
-      platform,
-      total: rows.length,
-      flagged: rows.filter((row) => row.flagged).length,
-      ready: rows.filter((row) => row.status === "READY").length,
-      analysis: rows.filter((row) => row.status === "IN_PROGRESS" || row.status === "REMEDIATION_REQUIRED").length,
-      issue: rows.filter((row) => row.status === "ISSUE_FOUND").length,
-      postProject: rows.filter((row) => row.status === "NOT_CHECKED").length,
-      highCritical: rows.filter((row) => row.riskRating === "HIGH" || row.riskRating === "CRITICAL").length,
-    };
-  }).filter((summary) => summary.total > 0);
   return {
     clientName,
     highLevel: audit.highLevel,
@@ -134,8 +195,28 @@ export function buildReportModel(audit: BrowserAudit, clientName: string): Repor
     totalRows: audit.rows.length,
     totalFlagged: audit.rows.filter((row) => row.flagged).length,
     populatedSheets: new Set(audit.sheets.filter((sheet) => sheet.rowsImported > 0).map((sheet) => sheet.sheetName)).size,
-    migrationSummary,
   };
+}
+
+export function buildCategoryReportSections(audit: BrowserAudit): CategoryReportSection[] {
+  return ASSET_CATEGORY_SLUGS.map((slug) => {
+    const rows = audit.rows.filter((row) => row.auditCategory === slug);
+    const flagged = rows.filter((row) => row.flagged).length;
+    const warnings = rows.filter((row) => !row.flagged && row.warnReasons.length > 0).length;
+    return {
+      slug,
+      label: ASSET_CATEGORIES[slug].label,
+      total: rows.length,
+      flagged,
+      warnings,
+      groups: categoryGroups(slug, rows).map((group) => ({
+        label: group.label,
+        total: group.rows.length,
+        flagged: group.rows.filter((row) => row.flagged).length,
+      })),
+      ...categoryNarrative(slug, rows.length, flagged, warnings),
+    };
+  });
 }
 
 function profileRows(info: HighLevelInfo): string[][] {
@@ -180,6 +261,7 @@ export async function exportFullAuditReport(audit: BrowserAudit, clientName: str
   const [{ default: jsPDF }, autoTableModule] = await Promise.all([import("jspdf"), import("jspdf-autotable")]);
   const autoTable = autoTableModule.default;
   const model = buildReportModel(audit, clientName);
+  const categorySections = buildCategoryReportSections(audit);
   const doc = new jsPDF({ unit: "pt", format: "a4", orientation: "landscape" });
   const pageWidth = doc.internal.pageSize.getWidth();
   const pageHeight = doc.internal.pageSize.getHeight();
@@ -258,6 +340,28 @@ export async function exportFullAuditReport(audit: BrowserAudit, clientName: str
       doc.line(margin + 22, lineY, pageWidth - margin - 22, lineY);
     }
   };
+  const drawStrategyCard = (
+    x: number,
+    y: number,
+    width: number,
+    height: number,
+    title: string,
+    body: string | string[],
+    fill: [number, number, number],
+    dark = false,
+  ) => {
+    doc.setFillColor(...fill);
+    doc.setDrawColor(217, 231, 245);
+    doc.roundedRect(x, y, width, height, 12, 12, dark ? "F" : "FD");
+    doc.setTextColor(...(dark ? BRAND.white : BRAND.navy));
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(11);
+    doc.text(title, x + 18, y + 27);
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(7.7);
+    const content = Array.isArray(body) ? body.map((item) => `- ${item}`).join("\n") : body;
+    doc.text(doc.splitTextToSize(content, width - 36), x + 18, y + 49, { lineHeightFactor: 1.25 });
+  };
 
   doc.setFillColor(...BRAND.navy);
   doc.rect(0, 0, pageWidth, pageHeight, "F");
@@ -280,7 +384,7 @@ export async function exportFullAuditReport(audit: BrowserAudit, clientName: str
   doc.setFont("helvetica", "normal");
   doc.setFontSize(10);
   doc.setTextColor(216, 243, 255);
-  doc.text(`Generated ${new Date().toLocaleDateString("en-GB")} · 9-page concise report`, margin, 278);
+  doc.text(`Generated ${new Date().toLocaleDateString("en-GB")} · full category report`, margin, 278);
   doc.setTextColor(...BRAND.cyan);
   doc.text("The raw workbook remains the complete item-level audit record.", margin, pageHeight - 40);
 
@@ -331,26 +435,83 @@ export async function exportFullAuditReport(audit: BrowserAudit, clientName: str
   addBlankPanel("CTO Summary", "CTO Summary — complete manually", BRAND.purple);
   addBlankPanel("DfE Alignment", "DfE Alignment — complete manually", BRAND.orange);
 
-  y = newPage("Category & Priority Distribution", `${clientName} · full counts without item-level dumping`, BRAND.purple);
+  y = newPage("High Level Information", `${clientName} · site profile and audit contacts`, BRAND.purple);
   autoTable(doc, {
     startY: y,
-    head: [["Category", "Subcategory / Platform", "Total", "Flagged", "Flag rate"]],
-    body: model.groupSummary.map((group) => [
-      group.category,
-      group.group,
-      group.total,
-      group.flagged,
-      group.total ? `${Math.round((group.flagged / group.total) * 100)}%` : "0%",
-    ]),
+    head: [["Profile", "Value", "Profile", "Value"]],
+    body: profileRows(model.highLevel),
     theme: "grid",
     headStyles: { fillColor: BRAND.purple, textColor: 255, fontSize: 8 },
-    bodyStyles: { fontSize: 7.3, cellPadding: 3 },
-    margin: { left: margin, right: margin, top: 90 },
+    bodyStyles: { fontSize: 8, cellPadding: 4 },
+    margin: { left: margin, right: margin },
   });
-  doc.setTextColor(...BRAND.slate);
-  doc.setFont("helvetica", "italic");
-  doc.setFontSize(8);
-  doc.text("These totals use the complete imported workbook; only the example pages below are sampled.", margin, pageHeight - 24);
+  y = lastTableY() + 18;
+  autoTable(doc, {
+    startY: y,
+    head: [["Role", "Name", "Email", "Phone", "Notes"]],
+    body: model.highLevel.contacts.length > 0
+      ? model.highLevel.contacts.map((contact) => [contact.role, contact.name, contact.email, contact.phone, contact.notes])
+      : [["No contacts recorded", "—", "—", "—", "Add contacts in High Level Info"]],
+    theme: "grid",
+    headStyles: { fillColor: BRAND.navy, textColor: 255, fontSize: 8 },
+    bodyStyles: { fontSize: 7.5, cellPadding: 4, valign: "top" },
+    margin: { left: margin, right: margin },
+  });
+
+  for (const section of categorySections) {
+    const color = CATEGORY_COLOR[section.slug];
+    y = newPage(`${section.label} — highlights`, `${clientName} · ${section.total} audited · ${section.flagged} flagged · ${section.warnings} warnings`, color);
+    const metrics = [
+      ["Items audited", section.total, color],
+      ["Flagged", section.flagged, BRAND.pink],
+      ["Warnings", section.warnings, BRAND.orange],
+      ["Flag rate", section.total ? `${Math.round((section.flagged / section.total) * 100)}%` : "0%", BRAND.navy],
+    ] as const;
+    metrics.forEach(([label, value, tileColor], index) => {
+      const x = margin + index * (tileWidth + 16);
+      doc.setFillColor(...tileColor);
+      doc.roundedRect(x, y, tileWidth, 66, 8, 8, "F");
+      doc.setTextColor(...BRAND.white);
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(19);
+      doc.text(String(value), x + 12, y + 30);
+      doc.setFontSize(7.5);
+      doc.text(label.toUpperCase(), x + 12, y + 52);
+    });
+    y += 84;
+    autoTable(doc, {
+      startY: y,
+      head: [["Breakdown", "Count", "Flagged", "Flag rate"]],
+      body: section.groups.length > 0
+        ? section.groups.map((group) => [group.label, group.total, group.flagged, group.total ? `${Math.round((group.flagged / group.total) * 100)}%` : "0%"])
+        : [["No imported records", 0, 0, "0%"]],
+      theme: "grid",
+      headStyles: { fillColor: color, textColor: section.slug === "network" ? BRAND.navy : BRAND.white, fontSize: 8.5 },
+      bodyStyles: { fontSize: 8, cellPadding: 3 },
+      margin: { left: margin, right: margin },
+    });
+    y = lastTableY() + 16;
+    doc.setFillColor(...BRAND.white);
+    doc.setDrawColor(217, 231, 245);
+    doc.roundedRect(margin, y, pageWidth - margin * 2, Math.min(92, pageHeight - y - 34), 10, 10, "FD");
+    doc.setTextColor(...BRAND.navy);
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(10);
+    doc.text("Section highlight", margin + 16, y + 24);
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(8);
+    doc.setTextColor(...BRAND.slate);
+    doc.text(doc.splitTextToSize(section.whatThisMeans, pageWidth - margin * 2 - 32), margin + 16, y + 44, { lineHeightFactor: 1.2 });
+
+    newPage(`${section.label} — strategy`, `${clientName} · what this means, what if nothing changes, and the 3 month / 12 month / 2 year roadmap`, color);
+    const cardWidth = (pageWidth - margin * 2 - 22) / 2;
+    drawStrategyCard(margin, 108, cardWidth, 132, "What this means", section.whatThisMeans, BRAND.white);
+    drawStrategyCard(margin + cardWidth + 22, 108, cardWidth, 132, "What if we do nothing", section.whatIfNothing, BRAND.navy, true);
+    const roadmapWidth = (pageWidth - margin * 2 - 36) / 3;
+    drawStrategyCard(margin, 266, roadmapWidth, 205, "3 months", section.plan3Months, BRAND.white);
+    drawStrategyCard(margin + roadmapWidth + 18, 266, roadmapWidth, 205, "12 months", section.plan12Months, BRAND.white);
+    drawStrategyCard(margin + (roadmapWidth + 18) * 2, 266, roadmapWidth, 205, "2 years", section.plan2Years, BRAND.white);
+  }
 
   y = newPage("Representative Audited Items", `${clientName} · example inventory only`, BRAND.cyan);
   doc.setTextColor(...BRAND.navy);
@@ -391,45 +552,6 @@ export async function exportFullAuditReport(audit: BrowserAudit, clientName: str
   doc.setFont("helvetica", "italic");
   doc.setFontSize(8);
   doc.text(`${model.flaggedSample.length} representative priority items shown from ${model.totalFlagged} flagged records.`, margin, pageHeight - 24);
-
-  y = newPage("Migration Readiness", `${clientName} · Microsoft and Google readiness distribution`, BRAND.pink);
-  autoTable(doc, {
-    startY: y,
-    head: [["Platform", "Total", "Flagged", "Ready", "Analysis / Remediation", "Issue Found", "Post Project", "High / Critical Risk"]],
-    body: model.migrationSummary.map((summary) => [
-      summary.platform,
-      summary.total,
-      summary.flagged,
-      summary.ready,
-      summary.analysis,
-      summary.issue,
-      summary.postProject,
-      summary.highCritical,
-    ]),
-    theme: "grid",
-    headStyles: { fillColor: BRAND.pink, textColor: 255, fontSize: 7.5 },
-    bodyStyles: { fontSize: 8, cellPadding: 4 },
-    margin: { left: margin, right: margin },
-  });
-  y = lastTableY() + 24;
-  doc.setFillColor(...BRAND.white);
-  doc.setDrawColor(217, 231, 245);
-  doc.roundedRect(margin, y, pageWidth - margin * 2, 120, 10, 10, "FD");
-  doc.setTextColor(...BRAND.navy);
-  doc.setFont("helvetica", "bold");
-  doc.setFontSize(12);
-  doc.text("Migration reporting note", margin + 18, y + 28);
-  doc.setFont("helvetica", "normal");
-  doc.setFontSize(9);
-  doc.setTextColor(...BRAND.slate);
-  doc.text(
-    doc.splitTextToSize(
-      "All Microsoft and Google readiness checks remain editable in the browser workspace and in the raw workbook. This concise report preserves platform, status, flagged and risk distributions without reproducing the full item-level migration register.",
-      pageWidth - margin * 2 - 36,
-    ),
-    margin + 18,
-    y + 52,
-  );
 
   downloadBlob(
     doc.output("blob"),

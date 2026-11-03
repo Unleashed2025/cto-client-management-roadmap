@@ -1,7 +1,7 @@
 import type PptxGenJS from "pptxgenjs";
-import { ASSET_CATEGORIES, type AuditRow, type BrowserAudit } from "./audit-model";
+import { ASSET_CATEGORIES, type AssetCategorySlug, type AuditRow, type BrowserAudit } from "./audit-model";
 import { downloadBlob } from "./download-file";
-import { buildReportModel, REPORT_STRUCTURE } from "./full-audit-report";
+import { buildCategoryReportSections, buildReportModel, REPORT_STRUCTURE } from "./full-audit-report";
 
 const COLORS = {
   navy: "071A3F",
@@ -14,6 +14,14 @@ const COLORS = {
   white: "FFFFFF",
   line: "D9E7F5",
   pale: "F8FCFF",
+};
+
+const CATEGORY_COLOR: Record<AssetCategorySlug, string> = {
+  "data-infra": COLORS.navy,
+  network: COLORS.cyan,
+  "client-compute": COLORS.purple,
+  software: COLORS.purple,
+  cyber: COLORS.orange,
 };
 
 function text(value: unknown): string {
@@ -85,6 +93,7 @@ export async function exportPowerPointReport(audit: BrowserAudit, clientName: st
   const { default: PptxGenJS } = await import("pptxgenjs");
   const pptx = new PptxGenJS();
   const model = buildReportModel(audit, clientName);
+  const categorySections = buildCategoryReportSections(audit);
   const logo = await logoDataUrl();
   pptx.layout = "LAYOUT_WIDE";
   pptx.author = "Unleashed";
@@ -120,10 +129,25 @@ export async function exportPowerPointReport(audit: BrowserAudit, clientName: st
   const addFooter = (slide: PptxGenJS.Slide, message: string) => {
     slide.addText(message, { x: 0.55, y: 7.16, w: 12.2, h: 0.16, fontSize: 7.5, italic: true, color: COLORS.slate, margin: 0 });
   };
+  const addStrategyCard = (slide: PptxGenJS.Slide, x: number, y: number, w: number, h: number, title: string, body: string | string[], fill = COLORS.white, dark = false) => {
+    slide.addShape(pptx.ShapeType.roundRect, { x, y, w, h, rectRadius: 0.06, fill: { color: fill }, line: { color: dark ? fill : COLORS.line, pt: 1 } });
+    slide.addText(title, { x: x + 0.22, y: y + 0.2, w: w - 0.44, h: 0.26, bold: true, fontSize: 13, color: dark ? COLORS.white : COLORS.navy, margin: 0 });
+    slide.addText(Array.isArray(body) ? body.map((item) => `• ${item}`).join("\n") : body, {
+      x: x + 0.22,
+      y: y + 0.62,
+      w: w - 0.44,
+      h: h - 0.82,
+      fontSize: Array.isArray(body) ? 9.2 : 10.2,
+      color: dark ? COLORS.white : COLORS.slate,
+      breakLine: false,
+      valign: "top",
+      margin: 0,
+    });
+  };
   const addBlankSlide = (index: number, title: string, prompt: string, color: string) => {
     const slide = addSlide();
     addHeader(slide, index, title, `${clientName} · manual completion section`, color);
-    slide.addShape(pptx.ShapeType.roundRect, { x: 0.62, y: 1.35, w: 12.08, h: 5.45, rectRadius: 0.08, fill: { color: COLORS.white }, line: { color: COLORS.line, width: 1.5 } });
+    slide.addShape(pptx.ShapeType.roundRect, { x: 0.62, y: 1.35, w: 12.08, h: 5.45, rectRadius: 0.08, fill: { color: COLORS.white }, line: { color: COLORS.line, pt: 1.5 } });
     slide.addText(prompt, { x: 0.92, y: 1.72, w: 11.45, h: 0.42, bold: true, fontSize: 19, color, margin: 0 });
     slide.addText("Click here to add the manually prepared narrative.", {
       x: 0.92,
@@ -149,7 +173,7 @@ export async function exportPowerPointReport(audit: BrowserAudit, clientName: st
   cover.addText("FULL AUDIT REPORT", { x: 0.65, y: 1.22, w: 2.08, h: 0.16, bold: true, fontSize: 10, color: COLORS.navy, align: "center", margin: 0 });
   cover.addText("Full Lifecycle, Risk & Roadmap Report", { x: 0.65, y: 2.05, w: 10.7, h: 0.62, bold: true, fontSize: 31, color: COLORS.white, margin: 0 });
   cover.addText(clientName, { x: 0.65, y: 3.08, w: 10.7, h: 0.4, fontSize: 20, bold: true, color: COLORS.white, margin: 0 });
-  cover.addText(`Generated ${new Date().toLocaleDateString("en-GB")} · 9-slide editable presentation`, { x: 0.65, y: 3.65, w: 8, h: 0.25, fontSize: 11, color: "D8F3FF", margin: 0 });
+  cover.addText(`Generated ${new Date().toLocaleDateString("en-GB")} · full category presentation`, { x: 0.65, y: 3.65, w: 8, h: 0.25, fontSize: 11, color: "D8F3FF", margin: 0 });
   cover.addText("The raw workbook remains the complete item-level audit record.", { x: 0.65, y: 6.9, w: 8.5, h: 0.22, fontSize: 10, color: COLORS.cyan, margin: 0 });
 
   const overview = addSlide();
@@ -189,17 +213,71 @@ export async function exportPowerPointReport(audit: BrowserAudit, clientName: st
   addBlankSlide(4, "CTO Summary", "CTO Summary — complete manually", COLORS.purple);
   addBlankSlide(5, "DfE Alignment", "DfE Alignment — complete manually", COLORS.orange);
 
-  const distribution = addSlide();
-  addHeader(distribution, 6, "Category & Priority Distribution", `${clientName} · full counts without item-level dumping`, COLORS.purple);
-  distribution.addTable(tableRows(
-    ["Category", "Subcategory / Platform", "Total", "Flagged", "Flag rate"],
-    model.groupSummary.map((group) => [group.category, group.group, String(group.total), String(group.flagged), group.total ? `${Math.round((group.flagged / group.total) * 100)}%` : "0%"]),
-    COLORS.purple,
-  ), { x: 0.55, y: 1.28, w: 12.2, h: 5.55, colW: [2.6, 4.65, 1.1, 1.1, 1.3], rowH: 0.23, fontSize: 7.8, margin: 0.035, border: { color: COLORS.line, pt: 0.8 }, autoPage: false });
-  addFooter(distribution, "Complete category and priority distributions are shown here; item examples are intentionally limited on the next two slides.");
+  const highLevel = addSlide();
+  addHeader(highLevel, slideCount, "High Level Information", `${clientName} · organisation, site, audit and estate profile`, COLORS.purple);
+  const profileTiles = [
+    ["Organisation", model.highLevel.schoolTrustName || "Not recorded", COLORS.navy],
+    ["Site", [model.highLevel.siteName, model.highLevel.townCity, model.highLevel.postcode].filter(Boolean).join(" · ") || "Not recorded", COLORS.cyan],
+    ["Audit", [model.highLevel.auditDate, model.highLevel.auditor].filter(Boolean).join(" · ") || "Not recorded", COLORS.purple],
+    ["Estate size", `${model.highLevel.staffCount || "—"} staff · ${model.highLevel.studentCount || "—"} students · ${model.highLevel.deviceCount || "—"} devices`, COLORS.pink],
+  ] as const;
+  profileTiles.forEach(([label, value, color], index) => {
+    const x = 0.55 + (index % 2) * 6.2;
+    const y = 1.28 + Math.floor(index / 2) * 1.35;
+    highLevel.addShape(pptx.ShapeType.roundRect, { x, y, w: 5.9, h: 1.08, rectRadius: 0.05, fill: { color: COLORS.white }, line: { color: COLORS.line, pt: 1 } });
+    highLevel.addShape(pptx.ShapeType.rect, { x, y, w: 0.12, h: 1.08, fill: { color }, line: { color } });
+    highLevel.addText(label.toUpperCase(), { x: x + 0.28, y: y + 0.2, w: 2.2, h: 0.16, fontSize: 8, bold: true, color, margin: 0 });
+    highLevel.addText(value, { x: x + 0.28, y: y + 0.5, w: 5.25, h: 0.32, fontSize: 13, bold: true, color: COLORS.navy, margin: 0, breakLine: false });
+  });
+  highLevel.addTable(tableRows(
+    ["Role", "Name", "Email", "Phone"],
+    model.highLevel.contacts.length > 0
+      ? model.highLevel.contacts.map((contact) => [contact.role || "—", contact.name || "—", contact.email || "—", contact.phone || "—"])
+      : [["No contacts recorded", "—", "—", "—"]],
+    COLORS.navy,
+  ), { x: 0.55, y: 4.2, w: 12.2, h: 2.15, colW: [2.5, 2.6, 4.3, 2.8], rowH: 0.36, fontSize: 8.5, margin: 0.05, border: { color: COLORS.line, pt: 1 }, autoPage: false });
+  addFooter(highLevel, "High Level Information remains editable in the browser workspace.");
+
+  for (const section of categorySections) {
+    const color = CATEGORY_COLOR[section.slug];
+    const highlights = addSlide();
+    addHeader(highlights, slideCount, `${section.label} — highlights`, `${clientName} · ${section.total} audited · ${section.flagged} flagged · ${section.warnings} warnings`, color);
+    const sectionMetrics = [
+      ["Items audited", section.total, color],
+      ["Flagged", section.flagged, COLORS.pink],
+      ["Warnings", section.warnings, COLORS.orange],
+      ["Flag rate", section.total ? `${Math.round((section.flagged / section.total) * 100)}%` : "0%", COLORS.navy],
+    ] as const;
+    sectionMetrics.forEach(([label, value, tileColor], index) => {
+      const x = 0.55 + index * 3.15;
+      highlights.addShape(pptx.ShapeType.roundRect, { x, y: 1.25, w: 2.82, h: 0.9, rectRadius: 0.06, fill: { color: tileColor }, line: { color: tileColor } });
+      highlights.addText(String(value), { x: x + 0.16, y: 1.43, w: 2.3, h: 0.28, bold: true, fontSize: 24, color: COLORS.white, margin: 0 });
+      highlights.addText(label.toUpperCase(), { x: x + 0.16, y: 1.82, w: 2.3, h: 0.16, bold: true, fontSize: 8, color: COLORS.white, margin: 0 });
+    });
+    highlights.addTable(tableRows(
+      ["Breakdown", "Count", "Flagged", "Flag rate"],
+      section.groups.length > 0
+        ? section.groups.map((group) => [group.label, String(group.total), String(group.flagged), group.total ? `${Math.round((group.flagged / group.total) * 100)}%` : "0%"])
+        : [["No imported records", "0", "0", "0%"]],
+      color,
+    ), { x: 0.55, y: 2.45, w: 7.2, h: 3.5, colW: [4.15, 0.95, 0.95, 1.15], rowH: 0.31, fontSize: 8.5, margin: 0.05, border: { color: COLORS.line, pt: 1 }, autoPage: false });
+    highlights.addShape(pptx.ShapeType.roundRect, { x: 8.0, y: 2.45, w: 4.75, h: 3.5, rectRadius: 0.06, fill: { color: COLORS.white }, line: { color: COLORS.line, pt: 1 } });
+    highlights.addText("SECTION HIGHLIGHT", { x: 8.3, y: 2.78, w: 3.9, h: 0.18, bold: true, fontSize: 9, color, margin: 0 });
+    highlights.addText(section.whatThisMeans, { x: 8.3, y: 3.18, w: 4.15, h: 2.25, fontSize: 12, color: COLORS.slate, valign: "top", margin: 0, breakLine: false });
+    addFooter(highlights, "Counts and category breakdowns use the complete imported workbook.");
+
+    const strategy = addSlide();
+    addHeader(strategy, slideCount, `${section.label} — strategy`, `${clientName} · what this means, what if nothing changes, and the 3 month / 12 month / 2 year roadmap`, color);
+    addStrategyCard(strategy, 0.55, 1.3, 6.0, 1.65, "What this means", section.whatThisMeans);
+    addStrategyCard(strategy, 6.75, 1.3, 6.0, 1.65, "What if we do nothing", section.whatIfNothing, COLORS.navy, true);
+    addStrategyCard(strategy, 0.55, 3.25, 3.93, 3.45, "3 months", section.plan3Months);
+    addStrategyCard(strategy, 4.7, 3.25, 3.93, 3.45, "12 months", section.plan12Months);
+    addStrategyCard(strategy, 8.82, 3.25, 3.93, 3.45, "2 years", section.plan2Years);
+    addFooter(strategy, "Roadmap actions are editable and should be refined with owners, dates and budget.");
+  }
 
   const inventory = addSlide();
-  addHeader(inventory, 7, "Representative Audited Items", `${clientName} · example inventory only`, COLORS.cyan);
+  addHeader(inventory, slideCount, "Representative Audited Items", `${clientName} · example inventory only`, COLORS.cyan);
   inventory.addText("Representative/example list — the raw workbook contains the complete audited inventory.", { x: 0.58, y: 1.18, w: 12.1, h: 0.23, bold: true, fontSize: 11, color: COLORS.navy, margin: 0 });
   inventory.addTable(tableRows(
     ["Category", "Item", "Workbook section", "Representative detail", "Lifecycle / priority"],
@@ -209,7 +287,7 @@ export async function exportPowerPointReport(audit: BrowserAudit, clientName: st
   addFooter(inventory, `${model.inventorySample.length} examples shown from Data Infrastructure, Network and Client Compute.`);
 
   const flagged = addSlide();
-  addHeader(flagged, 8, "Representative Flagged Items", `${clientName} · example priority list only`, COLORS.pink);
+  addHeader(flagged, slideCount, "Representative Flagged Items", `${clientName} · example priority list only`, COLORS.pink);
   flagged.addText("Representative/example flagged list — refer to the raw workbook for the complete flagged-item detail.", { x: 0.58, y: 1.18, w: 12.1, h: 0.23, bold: true, fontSize: 11, color: COLORS.navy, margin: 0 });
   flagged.addTable(tableRows(
     ["Category", "Item", "Status", "Risk", "Reason", "Action / Notes"],
@@ -217,30 +295,6 @@ export async function exportPowerPointReport(audit: BrowserAudit, clientName: st
     COLORS.pink,
   ), { x: 0.55, y: 1.53, w: 12.2, h: 5.35, colW: [1.55, 1.75, 1.05, 0.8, 3.55, 3.5], rowH: 0.31, fontSize: 6.8, margin: 0.035, border: { color: COLORS.line, pt: 0.8 }, autoPage: false });
   addFooter(flagged, `${model.flaggedSample.length} representative priority items shown from ${model.totalFlagged} flagged records.`);
-
-  const migration = addSlide();
-  addHeader(migration, 9, "Migration Readiness", `${clientName} · Microsoft and Google readiness distribution`, COLORS.pink);
-  migration.addTable(tableRows(
-    ["Platform", "Total", "Flagged", "Ready", "Analysis / Remediation", "Issue Found", "Post Project", "High / Critical"],
-    model.migrationSummary.map((summary) => [
-      summary.platform,
-      String(summary.total),
-      String(summary.flagged),
-      String(summary.ready),
-      String(summary.analysis),
-      String(summary.issue),
-      String(summary.postProject),
-      String(summary.highCritical),
-    ]),
-    COLORS.pink,
-  ), { x: 0.55, y: 1.35, w: 12.2, h: 1.75, colW: [1.45, 0.75, 0.8, 0.75, 2.4, 1.2, 1.2, 1.45], rowH: 0.42, fontSize: 8.5, margin: 0.055, border: { color: COLORS.line, pt: 1 } });
-  migration.addShape(pptx.ShapeType.roundRect, { x: 0.75, y: 3.55, w: 11.8, h: 2.2, rectRadius: 0.08, fill: { color: COLORS.white }, line: { color: COLORS.line, width: 1.2 } });
-  migration.addText("Migration reporting note", { x: 1.02, y: 3.88, w: 4.2, h: 0.3, bold: true, fontSize: 17, color: COLORS.navy, margin: 0 });
-  migration.addText(
-    "All Microsoft and Google readiness checks remain editable in the browser workspace and in the raw workbook. This concise presentation preserves platform, status, flagged and risk distributions without reproducing the full item-level migration register.",
-    { x: 1.02, y: 4.35, w: 11.05, h: 0.9, fontSize: 13, color: COLORS.slate, breakLine: false, margin: 0 },
-  );
-  addFooter(migration, "Complete migration checks remain available in the browser workspace and raw workbook.");
 
   if (slideCount !== REPORT_STRUCTURE.length) {
     throw new Error(`Expected ${REPORT_STRUCTURE.length} slides but generated ${slideCount}`);

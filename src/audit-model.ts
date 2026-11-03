@@ -1,5 +1,5 @@
 export type FieldType = "text" | "textarea" | "number" | "boolean" | "select" | "date";
-export type AssetCategorySlug = "data-infra" | "network" | "client-compute" | "software" | "cyber" | "migration";
+export type AssetCategorySlug = "data-infra" | "network" | "client-compute" | "software" | "cyber";
 
 export interface SelectOption {
   value: string;
@@ -102,15 +102,6 @@ const CRITICALITY_OPTIONS = [
 ] as const;
 
 const RISK_RATING_OPTIONS = [...CRITICALITY_OPTIONS, { value: "NA", label: "N/A" }] as const;
-
-const MIGRATION_STATUS_OPTIONS = [
-  { value: "NOT_CHECKED", label: "Post Project" },
-  { value: "READY", label: "Ready" },
-  { value: "IN_PROGRESS", label: "Analysis / Remediation" },
-  { value: "ISSUE_FOUND", label: "Issue Found" },
-  { value: "REMEDIATION_REQUIRED", label: "Analysis / Remediation" },
-  { value: "NA", label: "N/A" },
-] as const;
 
 const PHYSICAL_VIRTUAL_OPTIONS = [
   { value: "PHYSICAL", label: "Physical" },
@@ -254,29 +245,9 @@ export const ASSET_CATEGORIES: Record<AssetCategorySlug, AssetCategoryConfig> = 
       { key: "actionsRequired", label: "Actions Required", type: "textarea", matchKeywords: ["actions required", "actions"] },
     ],
   },
-  migration: {
-    slug: "migration",
-    label: "Migration Readiness",
-    titleField: "area",
-    fields: [
-      { key: "area", label: "Area", type: "text", required: true, matchKeywords: ["area"] },
-      { key: "checkName", label: "Check", type: "text", matchKeywords: ["check"] },
-      { key: "sourcePlatform", label: "Source Platform", type: "text", matchKeywords: ["source platform", "platform"] },
-      { key: "requiredEvidence", label: "Required Evidence", type: "text", matchKeywords: ["required evidence", "evidence"] },
-      { key: "owner", label: "Owner", type: "text", matchKeywords: ["owner"] },
-      { key: "status", label: "Status", type: "select", options: MIGRATION_STATUS_OPTIONS, matchKeywords: ["status"] },
-      { key: "riskRating", label: "Risk Rating", type: "select", options: RISK_RATING_OPTIONS, matchKeywords: ["risk rating", "risk"] },
-      { key: "issueFinding", label: "Issue/Finding", type: "textarea", matchKeywords: ["issue", "finding"] },
-      { key: "remediationRequired", label: "Remediation Required", type: "textarea", matchKeywords: ["remediation"] },
-      { key: "targetDate", label: "Target Date", type: "date", matchKeywords: ["target date"] },
-      { key: "completedDate", label: "Completed Date", type: "date", matchKeywords: ["completed date", "completion date"] },
-      ...COST_FIELDS,
-      { key: "notes", label: "Notes", type: "textarea", matchKeywords: ["notes"] },
-    ],
-  },
 };
 
-export const ASSET_CATEGORY_SLUGS = Object.keys(ASSET_CATEGORIES) as AssetCategorySlug[];
+export const ASSET_CATEGORY_SLUGS: AssetCategorySlug[] = ["data-infra", "network", "client-compute", "software", "cyber"];
 
 const EMPTY_HIGH_LEVEL: HighLevelInfo = {
   schoolTrustName: "",
@@ -334,7 +305,6 @@ const SHEET_CATEGORY_MATCHERS: Array<{ match: RegExp; slug: AssetCategorySlug }>
   { match: /client compute/i, slug: "client-compute" },
   { match: /software/i, slug: "software" },
   { match: /cyber/i, slug: "cyber" },
-  { match: /migration/i, slug: "migration" },
 ];
 
 function categoryForSheet(sheetName: string): AssetCategorySlug | null {
@@ -507,14 +477,6 @@ function optionValue(value: unknown, options: readonly SelectOption[]): string {
     if (normalized.includes("expired") || normalized.includes("blocked")) return "BLOCKED";
     return "NA";
   }
-  if (options === MIGRATION_STATUS_OPTIONS) {
-    if (normalized.includes("ready") || normalized.includes("complete")) return "READY";
-    if (normalized.includes("issue")) return "ISSUE_FOUND";
-    if (normalized.includes("remediation")) return "REMEDIATION_REQUIRED";
-    if (normalized.includes("progress") || normalized.includes("analysis")) return "IN_PROGRESS";
-    if (normalized === "n a") return "NA";
-    return "NOT_CHECKED";
-  }
   if (options === PHYSICAL_VIRTUAL_OPTIONS) return normalized.includes("virtual") ? "VIRTUAL" : "PHYSICAL";
   if (options === DEPLOYMENT_MODEL_OPTIONS) {
     if (normalized.includes("hybrid")) return "HYBRID";
@@ -580,8 +542,12 @@ function buildRow(section: Section, values: unknown[], index: number): AuditRow 
 
 function parseHighLevel(grid: unknown[][]): HighLevelInfo {
   const find = (label: string) => grid.find((row) => normalize(row[0]) === normalize(label))?.[1];
-  const contacts = grid
-    .filter((row) => text(row[3]) && !/^(main contacts|role)$/i.test(text(row[3])))
+  const contactHeaderIndex = grid.findIndex((row) => normalize(row[3]) === "role" && normalize(row[4]) === "name");
+  const contactTail = contactHeaderIndex >= 0 ? grid.slice(contactHeaderIndex + 1) : [];
+  const contactEndIndex = contactTail.findIndex((row) => row.slice(3, 8).every(isBlank));
+  const contactRows = contactEndIndex >= 0 ? contactTail.slice(0, contactEndIndex) : contactTail;
+  const contacts = contactRows
+    .filter((row) => text(row[3]))
     .map((row) => ({
       id: crypto.randomUUID(),
       role: text(row[3]),
@@ -649,13 +615,6 @@ export function classifyClientCompute(row: AuditRow): string {
   return "Other client compute";
 }
 
-export function migrationPlatform(row: AuditRow): "Microsoft" | "Google" | "Other" {
-  const value = normalize([row.sourcePlatform, row.sectionTitle].join(" "));
-  if (/microsoft|m365|office 365/.test(value)) return "Microsoft";
-  if (/google|workspace|gmail/.test(value)) return "Google";
-  return "Other";
-}
-
 export function assessRows(rows: AuditRow[]): AuditRow[] {
   const coreCount = rows.filter((row) => row.auditCategory === "network" && row.assetType === "CORE_SWITCH").reduce((sum, row) => sum + (Number(row.currentQuantity) || 1), 0);
   const firewallCount = rows.filter((row) => row.auditCategory === "network" && row.assetType === "FIREWALL").reduce((sum, row) => sum + (Number(row.currentQuantity) || 1), 0);
@@ -691,10 +650,6 @@ export function assessRows(rows: AuditRow[]): AuditRow[] {
       if (row.installed === false) reasons.push("Cyber control not installed");
       else if (row.status === "IN_PROGRESS") reasons.push("Cyber control partially implemented");
       else if (row.installed === null || row.installed === "") warnings.push("Cyber control installation status unconfirmed");
-    } else if (row.auditCategory === "migration") {
-      if (row.status === "IN_PROGRESS" || row.status === "REMEDIATION_REQUIRED") reasons.push("Migration status is Analysis / Remediation");
-      if (row.status === "NOT_CHECKED") warnings.push("Post Project / pending migration activity");
-      if (!row.completedDate && dateState(row.targetDate) === "soon") warnings.push("Target date within 90 days");
     }
     return { ...row, flagged: reasons.length > 0, flagReasons: reasons, warnReasons: warnings };
   });
@@ -723,6 +678,7 @@ export async function parseAuditWorkbook(buffer: ArrayBuffer): Promise<BrowserAu
   for (const sheetName of workbook.SheetNames) {
     const worksheet = workbook.Sheets[sheetName];
     const grid = XLSXModule.utils.sheet_to_json<unknown[]>(worksheet, { header: 1, defval: null, raw: true });
+    if (/migration\s*readiness/i.test(sheetName)) continue;
     if (/high\s*level/i.test(sheetName)) {
       highLevel = parseHighLevel(grid);
       summaries.push({ sheetName, sectionTitle: null, matchedCategory: null, rowsImported: 0, rowsSkipped: 0 });
@@ -765,9 +721,6 @@ export function categoryGroups(category: AssetCategorySlug, rows: AuditRow[]): A
   }
   if (category === "client-compute") {
     return ["Chromebooks", "iPads", "Tablets", "Desktops", "Laptops", "Managed laptops", "Unmanaged", "Other client compute"].map((label) => ({ label, rows: rows.filter((row) => classifyClientCompute(row) === label) })).filter((group) => group.rows.length > 0);
-  }
-  if (category === "migration") {
-    return ["Microsoft", "Google", "Other"].map((label) => ({ label: `${label} readiness`, rows: rows.filter((row) => migrationPlatform(row) === label) })).filter((group) => group.rows.length > 0);
   }
   return [{ label: ASSET_CATEGORIES[category].label, rows }];
 }

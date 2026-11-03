@@ -22,7 +22,6 @@ import {
   assessRows,
   categoryGroups,
   createEmptyRow,
-  migrationPlatform,
   parseAuditWorkbook,
   type AssetCategorySlug,
   type AssetFieldConfig,
@@ -35,23 +34,50 @@ import { exportFullAuditReport } from "./full-audit-report";
 import { exportPowerPointReport } from "./powerpoint-report";
 
 type ViewKey = "overview" | "high-level" | AssetCategorySlug;
-type MigrationFilter = "all" | "Microsoft" | "Google" | "Other";
 
 const INITIAL_VISIBLE_ROWS = 200;
 
-const HIGH_LEVEL_FIELDS: Array<{ key: keyof Omit<HighLevelInfo, "contacts">; label: string; type?: string }> = [
-  { key: "schoolTrustName", label: "School / Trust Name" },
-  { key: "siteName", label: "Site Name" },
-  { key: "addressLine1", label: "Address Line 1" },
-  { key: "addressLine2", label: "Address Line 2" },
-  { key: "townCity", label: "Town / City" },
-  { key: "county", label: "County" },
-  { key: "postcode", label: "Postcode" },
-  { key: "auditDate", label: "Audit Date", type: "date" },
-  { key: "auditor", label: "Auditor" },
-  { key: "staffCount", label: "Number of Staff", type: "number" },
-  { key: "studentCount", label: "Number of Students", type: "number" },
-  { key: "deviceCount", label: "Number of Devices", type: "number" },
+type HighLevelField = { key: keyof Omit<HighLevelInfo, "contacts">; label: string; type?: string };
+
+const HIGH_LEVEL_SECTIONS: Array<{ title: string; description: string; accent: string; fields: HighLevelField[] }> = [
+  {
+    title: "Organisation",
+    description: "Trust or organisation identity",
+    accent: "bg-[#071A3F]",
+    fields: [{ key: "schoolTrustName", label: "School / Trust Name" }],
+  },
+  {
+    title: "Site",
+    description: "Primary audited location",
+    accent: "bg-[#00D4FF]",
+    fields: [
+      { key: "siteName", label: "Site Name" },
+      { key: "addressLine1", label: "Address Line 1" },
+      { key: "addressLine2", label: "Address Line 2" },
+      { key: "townCity", label: "Town / City" },
+      { key: "county", label: "County" },
+      { key: "postcode", label: "Postcode" },
+    ],
+  },
+  {
+    title: "Audit",
+    description: "Audit ownership and date",
+    accent: "bg-[#7E3AED]",
+    fields: [
+      { key: "auditDate", label: "Audit Date", type: "date" },
+      { key: "auditor", label: "Auditor" },
+    ],
+  },
+  {
+    title: "Estate size",
+    description: "Headline people and device counts",
+    accent: "bg-[#FF2AA0]",
+    fields: [
+      { key: "staffCount", label: "Number of Staff", type: "number" },
+      { key: "studentCount", label: "Number of Students", type: "number" },
+      { key: "deviceCount", label: "Number of Devices", type: "number" },
+    ],
+  },
 ];
 
 function rowTitle(row: AuditRow): string {
@@ -200,7 +226,7 @@ function EmptyUpload({ onFile }: { onFile: (file: File | null) => void }) {
       </div>
       <h2 className="mt-6 text-3xl font-black tracking-[-0.04em]">Upload the client audit workbook</h2>
       <p className="mx-auto mt-3 max-w-2xl text-sm font-semibold leading-6 text-slate-600">
-        The workbook is mapped into the same High Level Info, Data Infrastructure, Network & WiFi, Client Compute, Software, Cyber Security and Migration Readiness workspaces used by the Lifecycle app.
+        The workbook is mapped into High Level Info, Data Infrastructure, Network & WiFi, Client Compute, Software and Cyber Security workspaces.
       </p>
       <label className="mt-8 inline-flex cursor-pointer items-center gap-2 rounded-2xl bg-[#7E3AED] px-6 py-3.5 text-sm font-black text-white shadow-lg shadow-[#7E3AED]/20">
         <Upload className="size-4" /> Choose workbook
@@ -224,7 +250,6 @@ export function AuditBuilder() {
   const [clientName, setClientName] = React.useState("Temporary audit");
   const [activeView, setActiveView] = React.useState<ViewKey>("overview");
   const [status, setStatus] = React.useState("Upload a workbook to create the browser-only audit workspace.");
-  const [migrationFilter, setMigrationFilter] = React.useState<MigrationFilter>("all");
   const [visibleLimit, setVisibleLimit] = React.useState(INITIAL_VISIBLE_ROWS);
   const [addCategory, setAddCategory] = React.useState<AssetCategorySlug | null>(null);
   const [reporting, setReporting] = React.useState(false);
@@ -234,9 +259,7 @@ export function AuditBuilder() {
   const rows = audit?.rows ?? [];
   const activeCategory = ASSET_CATEGORY_SLUGS.includes(activeView as AssetCategorySlug) ? activeView as AssetCategorySlug : null;
   const activeRows = activeCategory ? rows.filter((row) => row.auditCategory === activeCategory) : [];
-  const filteredRows = activeCategory === "migration" && migrationFilter !== "all"
-    ? activeRows.filter((row) => migrationPlatform(row) === migrationFilter)
-    : activeRows;
+  const filteredRows = activeRows;
   const displayedRows = filteredRows.slice(0, visibleLimit);
   const groups = activeCategory ? categoryGroups(activeCategory, displayedRows) : [];
 
@@ -507,17 +530,31 @@ export function AuditBuilder() {
                 <div className="rounded-[26px] bg-white p-6 shadow-xl ring-1 ring-[#D9E7F5]">
                   <p className="text-xs font-black uppercase tracking-[0.2em] text-[#7E3AED]">Client and site profile</p>
                   <h2 className="mt-1 text-3xl font-black tracking-[-0.04em]">High Level Information</h2>
-                  <div className="mt-6 grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-                    {HIGH_LEVEL_FIELDS.map((field) => (
-                      <label key={field.key} className="space-y-1.5">
-                        <span className="text-xs font-bold text-slate-600">{field.label}</span>
-                        <input
-                          type={field.type ?? "text"}
-                          value={audit.highLevel[field.key]}
-                          onChange={(event) => updateHighLevel(field.key, event.target.value)}
-                          className="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm outline-none focus:border-[#7E3AED]"
-                        />
-                      </label>
+                  <p className="mt-2 text-sm font-semibold text-slate-500">Edit the organisation, location, audit ownership and estate profile in grouped tiles.</p>
+                  <div className="mt-6 grid gap-4 xl:grid-cols-2">
+                    {HIGH_LEVEL_SECTIONS.map((section) => (
+                      <div key={section.title} className="overflow-hidden rounded-[22px] border border-slate-200 bg-slate-50/70">
+                        <div className="flex items-center gap-3 border-b border-slate-200 bg-white px-5 py-4">
+                          <span className={`h-10 w-1.5 rounded-full ${section.accent}`} />
+                          <div>
+                            <h3 className="font-black">{section.title}</h3>
+                            <p className="text-xs font-semibold text-slate-500">{section.description}</p>
+                          </div>
+                        </div>
+                        <div className={`grid gap-4 p-5 ${section.fields.length > 2 ? "md:grid-cols-2" : ""}`}>
+                          {section.fields.map((field) => (
+                            <label key={field.key} className={`space-y-1.5 ${field.key === "schoolTrustName" || field.key === "siteName" ? "md:col-span-2" : ""}`}>
+                              <span className="text-xs font-bold text-slate-600">{field.label}</span>
+                              <input
+                                type={field.type ?? "text"}
+                                value={audit.highLevel[field.key]}
+                                onChange={(event) => updateHighLevel(field.key, event.target.value)}
+                                className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm outline-none focus:border-[#7E3AED] focus:ring-2 focus:ring-[#7E3AED]/10"
+                              />
+                            </label>
+                          ))}
+                        </div>
+                      </div>
                     ))}
                   </div>
                 </div>
@@ -529,20 +566,40 @@ export function AuditBuilder() {
                     </div>
                     <button onClick={addContact} className="inline-flex items-center gap-2 rounded-xl bg-[#7E3AED] px-4 py-2.5 text-sm font-black text-white"><Plus className="size-4" /> Add contact</button>
                   </div>
-                  <div className="mt-4 overflow-x-auto">
-                    <table className="min-w-[1050px] w-full text-left text-sm">
-                      <thead><tr className="bg-[#071A3F] text-xs uppercase tracking-[0.12em] text-white"><th className="p-3">Role</th><th className="p-3">Name</th><th className="p-3">Email</th><th className="p-3">Phone</th><th className="p-3">Notes</th><th className="p-3" /></tr></thead>
-                      <tbody>
-                        {audit.highLevel.contacts.map((contact) => (
-                          <tr key={contact.id} className="border-b border-slate-100">
-                            {(["role", "name", "email", "phone", "notes"] as const).map((key) => (
-                              <td key={key} className="p-2"><input value={contact[key]} onChange={(event) => updateContact(contact.id, { [key]: event.target.value })} className="w-full min-w-40 rounded-lg border border-slate-200 px-2 py-1.5 text-xs" /></td>
-                            ))}
-                            <td className="p-2"><button onClick={() => setAudit((current) => current ? { ...current, highLevel: { ...current.highLevel, contacts: current.highLevel.contacts.filter((item) => item.id !== contact.id) } } : current)} className="rounded-lg p-2 text-red-600 hover:bg-red-50"><Trash2 className="size-4" /></button></td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
+                  <div className="mt-5 grid gap-4 xl:grid-cols-2">
+                    {audit.highLevel.contacts.map((contact, index) => (
+                      <div key={contact.id} className="rounded-[22px] border border-slate-200 bg-slate-50/70 p-5">
+                        <div className="flex items-center justify-between gap-3">
+                          <div className="flex items-center gap-3">
+                            <div className="grid size-10 place-items-center rounded-xl bg-[#071A3F] text-sm font-black text-white">{index + 1}</div>
+                            <div>
+                              <h3 className="font-black">{contact.name || `Contact ${index + 1}`}</h3>
+                              <p className="text-xs font-semibold text-slate-500">{contact.role || "Role not recorded"}</p>
+                            </div>
+                          </div>
+                          <button onClick={() => setAudit((current) => current ? { ...current, highLevel: { ...current.highLevel, contacts: current.highLevel.contacts.filter((item) => item.id !== contact.id) } } : current)} className="rounded-lg p-2 text-red-600 hover:bg-red-50" aria-label={`Delete ${contact.name || `contact ${index + 1}`}`}><Trash2 className="size-4" /></button>
+                        </div>
+                        <div className="mt-4 grid gap-3 md:grid-cols-2">
+                          {(["role", "name", "email", "phone", "notes"] as const).map((key) => (
+                            <label key={key} className={`space-y-1.5 ${key === "notes" ? "md:col-span-2" : ""}`}>
+                              <span className="text-xs font-bold capitalize text-slate-600">{key}</span>
+                              {key === "notes" ? (
+                                <textarea value={contact[key]} onChange={(event) => updateContact(contact.id, { [key]: event.target.value })} rows={3} className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm outline-none focus:border-[#7E3AED]" />
+                              ) : (
+                                <input value={contact[key]} onChange={(event) => updateContact(contact.id, { [key]: event.target.value })} className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm outline-none focus:border-[#7E3AED]" />
+                              )}
+                            </label>
+                          ))}
+                        </div>
+                      </div>
+                    ))}
+                    {audit.highLevel.contacts.length === 0 && (
+                      <button onClick={addContact} className="rounded-[22px] border-2 border-dashed border-[#7E3AED]/30 bg-[#7E3AED]/5 p-8 text-left">
+                        <Users className="size-6 text-[#7E3AED]" />
+                        <p className="mt-3 font-black">Add the first contact</p>
+                        <p className="mt-1 text-sm font-semibold text-slate-500">Capture the main technical, leadership or supplier contact.</p>
+                      </button>
+                    )}
                   </div>
                 </div>
               </div>
@@ -558,21 +615,6 @@ export function AuditBuilder() {
                       <p className="mt-2 text-sm font-semibold text-slate-500">{filteredRows.length} item(s) · {filteredRows.filter((row) => row.flagged).length} flagged for attention</p>
                     </div>
                     <div className="flex flex-wrap gap-2">
-                      {activeCategory === "migration" && (
-                        <select
-                          value={migrationFilter}
-                          onChange={(event) => {
-                            setMigrationFilter(event.target.value as MigrationFilter);
-                            setVisibleLimit(INITIAL_VISIBLE_ROWS);
-                          }}
-                          className="rounded-xl border border-slate-200 px-3 py-2.5 text-sm font-bold"
-                        >
-                          <option value="all">All platforms</option>
-                          <option value="Microsoft">Microsoft</option>
-                          <option value="Google">Google</option>
-                          <option value="Other">Other</option>
-                        </select>
-                      )}
                       <button onClick={() => setAddCategory(activeCategory)} className="inline-flex items-center gap-2 rounded-xl bg-[#7E3AED] px-4 py-2.5 text-sm font-black text-white"><Plus className="size-4" /> Add item</button>
                     </div>
                   </div>
