@@ -10,7 +10,7 @@ import {
 } from 'lucide-react'
 import { jsPDF } from 'jspdf'
 import autoTable from 'jspdf-autotable'
-import { readSheet, type Row } from 'read-excel-file/browser'
+import * as XLSX from 'xlsx'
 import './App.css'
 
 type RoadmapItem = {
@@ -77,51 +77,17 @@ function normalisePriority(value: string) {
   return value || 'Unspecified'
 }
 
-function parseCsv(text: string): string[][] {
-  const rows: string[][] = []
-  let row: string[] = []
-  let value = ''
-  let quoted = false
-
-  for (let index = 0; index < text.length; index += 1) {
-    const character = text[index]
-    const nextCharacter = text[index + 1]
-    if (character === '"' && quoted && nextCharacter === '"') {
-      value += '"'
-      index += 1
-    } else if (character === '"') {
-      quoted = !quoted
-    } else if (character === ',' && !quoted) {
-      row.push(value)
-      value = ''
-    } else if ((character === '\n' || character === '\r') && !quoted) {
-      if (character === '\r' && nextCharacter === '\n') index += 1
-      row.push(value)
-      if (row.some((cell) => cell.trim())) rows.push(row)
-      row = []
-      value = ''
-    } else {
-      value += character
-    }
-  }
-
-  row.push(value)
-  if (row.some((cell) => cell.trim())) rows.push(row)
-  return rows
-}
-
 async function parseWorkbook(file: File): Promise<ParsedWorkbook> {
   try {
-    const sheetRows: Row[] = file.name.toLowerCase().endsWith('.csv')
-      ? parseCsv(await file.text())
-      : await readSheet(file)
-    if (!sheetRows.length) throw new Error('The workbook does not contain any rows.')
-    const headers = sheetRows[0].map(cleanValue)
-    const rows = sheetRows.slice(1).map((cells) =>
-      headers.reduce<Record<string, unknown>>((record, header, index) => {
-        if (header) record[header] = cells[index]
-        return record
-      }, {}),
+    const workbook = XLSX.read(await file.arrayBuffer(), {
+      type: 'array',
+      cellDates: true,
+    })
+    const sheetName = workbook.SheetNames[0]
+    if (!sheetName) throw new Error('The workbook does not contain any worksheets.')
+    const rows = XLSX.utils.sheet_to_json<Record<string, unknown>>(
+      workbook.Sheets[sheetName],
+      { defval: '', raw: false },
     )
 
     const items = rows
@@ -147,7 +113,7 @@ async function parseWorkbook(file: File): Promise<ParsedWorkbook> {
     return {
       fileName: file.name,
       clientName: items.find((item) => item.client)?.client || 'Client Roadmap',
-      sheetName: file.name.toLowerCase().endsWith('.csv') ? 'CSV template' : 'First worksheet',
+      sheetName,
       items,
     }
   } catch (error) {
@@ -157,49 +123,44 @@ async function parseWorkbook(file: File): Promise<ParsedWorkbook> {
 
 async function downloadTemplate() {
   const rows = [
-    [
-      'Client',
-      'Initiative',
-      'Category',
-      'Priority',
-      'Status',
-      'Owner',
-      'Start Date',
-      'Target Date',
-      'Notes',
-    ],
-    [
-      'Example Client',
-      'Complete Microsoft 365 security baseline',
-      'Cyber Security',
-      'High',
-      'Planned',
-      'CTO',
-      '01/12/2026',
-      '31/01/2027',
-      'Review identity, device, email, and data protection controls.',
-    ],
-    [
-      'Example Client',
-      'Refresh three-year technology roadmap',
-      'Strategy',
-      'Medium',
-      'Not started',
-      'Account Manager',
-      '01/02/2027',
-      '28/02/2027',
-      'Align planned investment to business objectives.',
-    ],
+    {
+      Client: 'Example Client',
+      Initiative: 'Complete Microsoft 365 security baseline',
+      Category: 'Cyber Security',
+      Priority: 'High',
+      Status: 'Planned',
+      Owner: 'CTO',
+      'Start Date': '01/12/2026',
+      'Target Date': '31/01/2027',
+      Notes: 'Review identity, device, email, and data protection controls.',
+    },
+    {
+      Client: 'Example Client',
+      Initiative: 'Refresh three-year technology roadmap',
+      Category: 'Strategy',
+      Priority: 'Medium',
+      Status: 'Not started',
+      Owner: 'Account Manager',
+      'Start Date': '01/02/2027',
+      'Target Date': '28/02/2027',
+      Notes: 'Align planned investment to business objectives.',
+    },
   ]
-  const csv = rows
-    .map((row) => row.map((value) => `"${value.replaceAll('"', '""')}"`).join(','))
-    .join('\r\n')
-  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' })
-  const link = document.createElement('a')
-  link.href = URL.createObjectURL(blob)
-  link.download = 'cto-client-roadmap-template.csv'
-  link.click()
-  URL.revokeObjectURL(link.href)
+  const sheet = XLSX.utils.json_to_sheet(rows)
+  sheet['!cols'] = [
+    { wch: 22 },
+    { wch: 42 },
+    { wch: 20 },
+    { wch: 14 },
+    { wch: 16 },
+    { wch: 20 },
+    { wch: 15 },
+    { wch: 15 },
+    { wch: 55 },
+  ]
+  const workbook = XLSX.utils.book_new()
+  XLSX.utils.book_append_sheet(workbook, sheet, 'Roadmap')
+  XLSX.writeFile(workbook, 'cto-client-roadmap-template.xlsx')
 }
 
 function generatePdf(data: ParsedWorkbook) {
@@ -318,8 +279,8 @@ function App() {
   async function handleFile(file?: File) {
     if (!file) return
     setError('')
-    if (!/\.(xlsx|csv)$/i.test(file.name)) {
-      setError('Please choose an Excel .xlsx or .csv file.')
+    if (!/\.(xlsx|xls|xlsm|xlsb|csv)$/i.test(file.name)) {
+      setError('Please choose an Excel .xlsx, .xls, .xlsm, .xlsb, or .csv file.')
       return
     }
     setIsLoading(true)
@@ -382,7 +343,7 @@ function App() {
             <input
               ref={inputRef}
               type="file"
-              accept=".xlsx,.csv"
+              accept=".xlsx,.xls,.xlsm,.xlsb,.csv,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
               onChange={(event) => void handleFile(event.target.files?.[0])}
               hidden
             />
