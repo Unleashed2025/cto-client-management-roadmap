@@ -21,6 +21,7 @@ import {
   ASSET_CATEGORY_SLUGS,
   assessRows,
   categoryGroups,
+  createBlankAudit,
   createEmptyRow,
   parseAuditWorkbook,
   type AssetCategorySlug,
@@ -218,7 +219,7 @@ function RiskBadge({ row }: { row: AuditRow }) {
   );
 }
 
-function EmptyUpload({ onFile }: { onFile: (file: File | null) => void }) {
+function EmptyUpload({ onFile, onBlank }: { onFile: (file: File | null) => void; onBlank: () => void }) {
   return (
     <section className="mx-auto mt-10 max-w-4xl rounded-[30px] border-2 border-dashed border-[#7E3AED]/40 bg-white p-12 text-center shadow-xl">
       <div className="mx-auto grid size-20 place-items-center rounded-[24px] bg-[#EBF8FF] text-[#7E3AED]">
@@ -228,15 +229,23 @@ function EmptyUpload({ onFile }: { onFile: (file: File | null) => void }) {
       <p className="mx-auto mt-3 max-w-2xl text-sm font-semibold leading-6 text-slate-600">
         The workbook is mapped into High Level Info, Data Infrastructure, Network & WiFi, Client Compute, Software and Cyber Security workspaces.
       </p>
-      <label className="mt-8 inline-flex cursor-pointer items-center gap-2 rounded-2xl bg-[#7E3AED] px-6 py-3.5 text-sm font-black text-white shadow-lg shadow-[#7E3AED]/20">
-        <Upload className="size-4" /> Choose workbook
-        <input
-          type="file"
-          className="sr-only"
-          accept=".xlsx,.xls,.xlsm,.xlsb,.csv,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-          onChange={(event) => onFile(event.target.files?.[0] ?? null)}
-        />
-      </label>
+      <div className="mt-8 flex flex-col items-center justify-center gap-3 sm:flex-row">
+        <label className="inline-flex cursor-pointer items-center gap-2 rounded-2xl bg-[#7E3AED] px-6 py-3.5 text-sm font-black text-white shadow-lg shadow-[#7E3AED]/20">
+          <Upload className="size-4" /> Choose workbook
+          <input
+            type="file"
+            className="sr-only"
+            accept=".xlsx,.xls,.xlsm,.xlsb,.csv,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+            onChange={(event) => onFile(event.target.files?.[0] ?? null)}
+          />
+        </label>
+        <button
+          onClick={onBlank}
+          className="inline-flex items-center gap-2 rounded-2xl border-2 border-[#7E3AED] bg-white px-6 py-3 text-sm font-black text-[#7E3AED] hover:bg-[#7E3AED]/5"
+        >
+          <Plus className="size-4" /> Start blank audit
+        </button>
+      </div>
       <div className="mt-8 flex items-center justify-center gap-2 text-xs font-bold text-slate-500">
         <ShieldCheck className="size-4 text-[#00D4FF]" />
         Parsed locally in this browser. Nothing is written to the Lifecycle app.
@@ -286,6 +295,13 @@ export function AuditBuilder() {
       console.error("Unable to read audit workbook", error);
       setStatus("This spreadsheet could not be mapped. Check that it is a valid audit workbook or CSV and try again.");
     }
+  }
+
+  function startBlankAudit() {
+    setAudit(createBlankAudit());
+    setClientName("New client audit");
+    navigate("high-level");
+    setStatus("Blank audit started. Complete High Level Info, then add records in each category workspace.");
   }
 
   function updateRow(rowId: string, field: string, value: unknown) {
@@ -394,7 +410,7 @@ export function AuditBuilder() {
                   <input value={clientName} onChange={(event) => setClientName(event.target.value)} className="w-56 bg-transparent text-sm font-bold text-white outline-none placeholder:text-white/50" />
                 </label>
                 <label className="inline-flex cursor-pointer items-center gap-2 rounded-xl bg-white/10 px-4 py-2.5 text-sm font-bold hover:bg-white/15">
-                  <Upload className="size-4" /> Replace workbook
+                  <Upload className="size-4" /> Import / replace workbook
                   <input
                     ref={fileInputRef}
                     type="file"
@@ -423,7 +439,7 @@ export function AuditBuilder() {
 
       {!audit ? (
         <div className="px-5 pb-12">
-          <EmptyUpload onFile={(file) => void handleUpload(file)} />
+          <EmptyUpload onFile={(file) => void handleUpload(file)} onBlank={startBlankAudit} />
           <p className="mx-auto mt-5 max-w-4xl rounded-2xl bg-white/80 px-5 py-3 text-center text-sm font-bold text-slate-600 ring-1 ring-[#D9E7F5]">{status}</p>
         </div>
       ) : (
@@ -509,7 +525,7 @@ export function AuditBuilder() {
                     <table className="w-full text-left text-sm">
                       <thead><tr className="border-b border-slate-200 text-xs uppercase tracking-[0.12em] text-slate-500"><th className="p-3">Sheet</th><th className="p-3">Section</th><th className="p-3">Workspace</th><th className="p-3 text-right">Imported</th><th className="p-3 text-right">Skipped</th></tr></thead>
                       <tbody>
-                        {audit.sheets.map((sheet, index) => (
+                        {audit.sheets.length > 0 ? audit.sheets.map((sheet, index) => (
                           <tr key={`${sheet.sheetName}-${sheet.sectionTitle}-${index}`} className="border-b border-slate-100">
                             <td className="p-3 font-bold">{sheet.sheetName}</td>
                             <td className="p-3 text-slate-600">{sheet.sectionTitle || "—"}</td>
@@ -517,7 +533,13 @@ export function AuditBuilder() {
                             <td className="p-3 text-right font-black">{sheet.rowsImported}</td>
                             <td className="p-3 text-right text-slate-500">{sheet.rowsSkipped}</td>
                           </tr>
-                        ))}
+                        )) : (
+                          <tr>
+                            <td colSpan={5} className="p-6 text-center font-semibold text-slate-500">
+                              Blank audit — no workbook imported. Add records manually in each category workspace.
+                            </td>
+                          </tr>
+                        )}
                       </tbody>
                     </table>
                   </div>

@@ -668,6 +668,14 @@ export function createEmptyRow(category: AssetCategorySlug): AuditRow {
   }])[0];
 }
 
+export function createBlankAudit(): BrowserAudit {
+  return {
+    highLevel: { ...EMPTY_HIGH_LEVEL, contacts: [] },
+    rows: [],
+    sheets: [],
+  };
+}
+
 export async function parseAuditWorkbook(buffer: ArrayBuffer): Promise<BrowserAudit> {
   const XLSXModule = await import("xlsx");
   const workbook = XLSXModule.read(buffer, { type: "array", cellDates: true });
