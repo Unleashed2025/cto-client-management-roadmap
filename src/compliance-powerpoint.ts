@@ -1,5 +1,5 @@
 import type PptxGenJS from "pptxgenjs";
-import type { AssessmentAnswer, BenchmarkDefinition } from "./compliance-benchmarks";
+import type { AssessmentAnswer, AssessmentDepth, BenchmarkDefinition } from "./compliance-benchmarks";
 import { downloadBlob } from "./download-file";
 
 const COLORS = {
@@ -58,11 +58,14 @@ export async function exportCompliancePowerPoint(
   responses: Record<string, BenchmarkResponse>,
   clientName: string,
   cisTier: 1 | 2 | 3,
+  assessmentDepth: AssessmentDepth,
 ) {
   const { default: PptxGenJS } = await import("pptxgenjs");
   const pptx = new PptxGenJS();
   const logo = await logoDataUrl();
-  const questions = benchmark.questions.filter((question) => benchmark.id !== "cis" || (question.tier ?? 1) <= cisTier);
+  const assessmentLabel = assessmentDepth === "pre" ? "Pre-readiness assessment" : "Full readiness assessment";
+  const sourceQuestions = assessmentDepth === "pre" ? benchmark.preQuestions : benchmark.fullQuestions;
+  const questions = sourceQuestions.filter((question) => benchmark.id !== "cis" || assessmentDepth === "pre" || (question.tier ?? 1) <= cisTier);
   const sections = [...new Set(questions.map((question) => question.section))];
   const counts = questions.reduce((summary, question) => {
     const answer = responses[question.id]?.answer ?? "not-assessed";
@@ -77,8 +80,8 @@ export async function exportCompliancePowerPoint(
   pptx.layout = "LAYOUT_WIDE";
   pptx.author = "Unleashed";
   pptx.company = "Unleashed";
-  pptx.subject = `${benchmark.title} readiness assessment`;
-  pptx.title = `${benchmark.title} — ${clientName}`;
+  pptx.subject = `${benchmark.title} ${assessmentLabel.toLowerCase()}`;
+  pptx.title = `${benchmark.title} — ${assessmentLabel} — ${clientName}`;
   pptx.theme = { headFontFace: "Aptos Display", bodyFontFace: "Aptos" };
   let slideNumber = 0;
 
@@ -113,11 +116,11 @@ export async function exportCompliancePowerPoint(
   cover.addText("COMPLIANCE BENCHMARK", { x: 0.65, y: 1.22, w: 2.5, h: 0.16, bold: true, fontSize: 10, color: COLORS.navy, align: "center", margin: 0 });
   cover.addText(benchmark.title, { x: 0.65, y: 2.05, w: 10.8, h: 0.75, bold: true, fontSize: 30, color: COLORS.white, margin: 0 });
   cover.addText(clientName, { x: 0.65, y: 3.08, w: 10.7, h: 0.4, fontSize: 20, bold: true, color: COLORS.white, margin: 0 });
-  cover.addText(`${benchmark.version} · Generated ${new Date().toLocaleDateString("en-GB")}`, { x: 0.65, y: 3.65, w: 8.5, h: 0.25, fontSize: 11, color: "D8F3FF", margin: 0 });
+  cover.addText(`${assessmentLabel} · ${benchmark.version} · Generated ${new Date().toLocaleDateString("en-GB")}`, { x: 0.65, y: 3.65, w: 10.5, h: 0.25, fontSize: 11, color: "D8F3FF", margin: 0 });
   cover.addText("Indicative readiness assessment — not a certification decision.", { x: 0.65, y: 6.9, w: 8.5, h: 0.22, fontSize: 10, color: COLORS.cyan, margin: 0 });
 
   const summary = pptx.addSlide();
-  addHeader(summary, "Readiness Summary", `${clientName} · ${benchmark.title}`, COLORS.purple);
+  addHeader(summary, "Readiness Summary", `${clientName} · ${benchmark.title} · ${assessmentLabel}`, COLORS.purple);
   const metrics = [
     ["Questions", questions.length, COLORS.navy],
     ["Assessed", `${assessed}/${questions.length}`, COLORS.purple],
@@ -150,35 +153,44 @@ export async function exportCompliancePowerPoint(
   addFooter(summary, "All content is editable. Validate findings against the authoritative framework and independent assessor requirements.");
 
   for (const section of sections) {
-    const slide = pptx.addSlide();
     const sectionQuestions = questions.filter((question) => question.section === section);
-    addHeader(slide, section, `${clientName} · ${benchmark.shortTitle}`, COLORS.purple);
-    slide.addTable(tableRows(
-      ["Question", "Result", "Evidence / Notes"],
-      sectionQuestions.map((question) => {
-        const response = responses[question.id] ?? { answer: "not-assessed" as AssessmentAnswer, evidence: "" };
-        const tier = question.tier ? `IG${question.tier} · ` : "";
-        return [`${tier}${question.prompt}`, answerLabel(response.answer), response.evidence || "No evidence recorded"];
-      }),
-    ), {
-      x: 0.55,
-      y: 1.3,
-      w: 12.2,
-      h: 5.75,
-      colW: [6.1, 1.35, 4.75],
-      rowH: sectionQuestions.length >= 5 ? 0.82 : sectionQuestions.length === 4 ? 1.0 : 1.3,
-      fontSize: sectionQuestions.length >= 5 ? 7.2 : 8.2,
-      margin: 0.055,
-      border: { color: COLORS.line, pt: 0.8 },
-      autoPage: false,
-    });
-    addFooter(slide, `${sectionQuestions.length} assessment question(s) · ${benchmark.sourceLabel}`);
+    for (let start = 0; start < sectionQuestions.length; start += 3) {
+      const pageQuestions = sectionQuestions.slice(start, start + 3);
+      const slide = pptx.addSlide();
+      const page = Math.floor(start / 3) + 1;
+      const pages = Math.ceil(sectionQuestions.length / 3);
+      addHeader(slide, pages > 1 ? `${section} (${page}/${pages})` : section, `${clientName} · ${benchmark.shortTitle} · ${assessmentLabel}`, COLORS.purple);
+      slide.addTable(tableRows(
+        ["Question", "Result", "Client Answer / Evidence"],
+        pageQuestions.map((question) => {
+          const response = responses[question.id] ?? { answer: "not-assessed" as AssessmentAnswer, evidence: "" };
+          const prefixes = [
+            question.reference,
+            question.tier ? `IG${question.tier}` : "",
+            question.answerType,
+          ].filter(Boolean).join(" · ");
+          return [`${prefixes ? `${prefixes}\n` : ""}${question.prompt}`, answerLabel(response.answer), response.evidence || "No answer or evidence recorded"];
+        }),
+      ), {
+        x: 0.55,
+        y: 1.3,
+        w: 12.2,
+        h: 5.75,
+        colW: [6.1, 1.35, 4.75],
+        rowH: 1.72,
+        fontSize: 8.2,
+        margin: 0.055,
+        border: { color: COLORS.line, pt: 0.8 },
+        autoPage: false,
+      });
+      addFooter(slide, `${pageQuestions.length} of ${sectionQuestions.length} section question(s) · ${benchmark.sourceLabel}`);
+    }
   }
 
   const output = await pptx.write({ outputType: "blob", compression: true });
   if (!(output instanceof Blob)) throw new Error("Compliance PowerPoint generation did not return a downloadable file.");
   downloadBlob(
     output,
-    `Unleashed-${benchmark.shortTitle.replace(/[^a-z0-9]+/gi, "-")}-${clientName.replace(/[^a-z0-9]+/gi, "-")}-${new Date().toISOString().slice(0, 10)}.pptx`,
+    `Unleashed-${benchmark.shortTitle.replace(/[^a-z0-9]+/gi, "-")}-${assessmentDepth}-readiness-${clientName.replace(/[^a-z0-9]+/gi, "-")}-${new Date().toISOString().slice(0, 10)}.pptx`,
   );
 }

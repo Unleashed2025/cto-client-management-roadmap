@@ -38,6 +38,7 @@ import {
   BENCHMARKS,
   BENCHMARK_IDS,
   type AssessmentAnswer,
+  type AssessmentDepth,
   type BenchmarkDefinition,
   type BenchmarkId,
 } from "./compliance-benchmarks";
@@ -275,6 +276,8 @@ function ComplianceOverview({ onOpen }: { onOpen: (id: BenchmarkId) => void }) {
 function ComplianceAssessment({
   benchmark,
   responses,
+  assessmentDepth,
+  onAssessmentDepthChange,
   cisTier,
   onCisTierChange,
   onChange,
@@ -285,6 +288,8 @@ function ComplianceAssessment({
 }: {
   benchmark: BenchmarkDefinition;
   responses: BenchmarkResponseSet;
+  assessmentDepth: AssessmentDepth;
+  onAssessmentDepthChange: (depth: AssessmentDepth) => void;
   cisTier: 1 | 2 | 3;
   onCisTierChange: (tier: 1 | 2 | 3) => void;
   onChange: (questionId: string, patch: Partial<BenchmarkResponse>) => void;
@@ -293,7 +298,8 @@ function ComplianceAssessment({
   onExport: () => void;
   exporting: boolean;
 }) {
-  const visibleQuestions = benchmark.questions.filter((question) => benchmark.id !== "cis" || (question.tier ?? 1) <= cisTier);
+  const assessmentQuestions = assessmentDepth === "pre" ? benchmark.preQuestions : benchmark.fullQuestions;
+  const visibleQuestions = assessmentQuestions.filter((question) => benchmark.id !== "cis" || assessmentDepth === "pre" || (question.tier ?? 1) <= cisTier);
   const result = visibleQuestions.reduce((summary, question) => {
     const answer = responses[question.id]?.answer ?? "not-assessed";
     summary[answer] += 1;
@@ -316,7 +322,7 @@ function ComplianceAssessment({
             <p className="mt-2 max-w-4xl text-sm font-semibold leading-6 text-slate-600">{benchmark.description}</p>
           </div>
           <div className="flex flex-wrap items-center gap-2">
-            {benchmark.id === "cis" && (
+            {benchmark.id === "cis" && assessmentDepth === "full" && (
               <label className="flex items-center gap-2 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm font-bold">
                 Target group
                 <select value={cisTier} onChange={(event) => onCisTierChange(Number(event.target.value) as 1 | 2 | 3)} className="bg-transparent font-black text-[#7E3AED] outline-none">
@@ -336,6 +342,22 @@ function ComplianceAssessment({
           </div>
         </div>
         <div className="mt-5 rounded-2xl bg-amber-50 p-4 text-xs font-semibold leading-5 text-amber-900">{benchmark.notice}</div>
+        <div className="mt-5 grid gap-3 md:grid-cols-2">
+          <button
+            onClick={() => onAssessmentDepthChange("pre")}
+            className={`rounded-2xl border-2 p-4 text-left ${assessmentDepth === "pre" ? "border-[#7E3AED] bg-[#7E3AED]/5" : "border-slate-200 bg-white hover:border-slate-300"}`}
+          >
+            <p className="text-xs font-black uppercase tracking-[0.14em] text-[#7E3AED]">Pre-readiness assessment</p>
+            <p className="mt-1 text-sm font-bold text-slate-800">25 core questions for an initial benchmark screening.</p>
+          </button>
+          <button
+            onClick={() => onAssessmentDepthChange("full")}
+            className={`rounded-2xl border-2 p-4 text-left ${assessmentDepth === "full" ? "border-[#071A3F] bg-[#071A3F]/5" : "border-slate-200 bg-white hover:border-slate-300"}`}
+          >
+            <p className="text-xs font-black uppercase tracking-[0.14em] text-[#071A3F]">Full readiness assessment</p>
+            <p className="mt-1 text-sm font-bold text-slate-800">{benchmark.fullQuestions.length} detailed questions covering the full assessment structure.</p>
+          </button>
+        </div>
       </div>
 
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
@@ -378,10 +400,19 @@ function ComplianceAssessment({
                   <div>
                     <div className="flex items-center gap-2">
                       <span className="grid size-7 shrink-0 place-items-center rounded-lg bg-[#EBF8FF] text-xs font-black text-[#7E3AED]">{index + 1}</span>
+                      {question.reference && <span className="rounded-full bg-[#071A3F]/10 px-2 py-1 text-[10px] font-black text-[#071A3F]">{question.reference}</span>}
                       {question.tier && <span className="rounded-full bg-[#7E3AED]/10 px-2 py-1 text-[10px] font-black text-[#7E3AED]">IG{question.tier}</span>}
+                      {question.answerType && <span className="rounded-full bg-[#00D4FF]/15 px-2 py-1 text-[10px] font-black text-[#075985]">{question.answerType}</span>}
                     </div>
                     <p className="mt-3 text-sm font-bold leading-6 text-slate-900">{question.prompt}</p>
                     <p className="mt-2 text-xs font-semibold leading-5 text-slate-500">{question.evidencePrompt}</p>
+                    {(question.guidance || question.logic) && (
+                      <details className="mt-3 rounded-xl bg-slate-50 px-3 py-2 text-xs text-slate-600">
+                        <summary className="cursor-pointer font-black text-slate-700">Question guidance and logic</summary>
+                        {question.guidance && <p className="mt-2 whitespace-pre-line leading-5">{question.guidance}</p>}
+                        {question.logic && <p className="mt-2 whitespace-pre-line border-t border-slate-200 pt-2 font-semibold leading-5">Logic: {question.logic}</p>}
+                      </details>
+                    )}
                   </div>
                   <label className="space-y-1.5">
                     <span className="text-xs font-black uppercase tracking-[0.12em] text-slate-500">Assessment</span>
@@ -398,12 +429,12 @@ function ComplianceAssessment({
                     </select>
                   </label>
                   <label className="space-y-1.5">
-                    <span className="text-xs font-black uppercase tracking-[0.12em] text-slate-500">Evidence / notes</span>
+                    <span className="text-xs font-black uppercase tracking-[0.12em] text-slate-500">Client answer / evidence</span>
                     <textarea
                       value={response.evidence}
                       onChange={(event) => onChange(question.id, { evidence: event.target.value })}
                       rows={4}
-                      placeholder="Record evidence, gaps, owner and next action..."
+                      placeholder="Record the client's answer, evidence, gaps, owner and next action..."
                       className="w-full resize-y rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm outline-none focus:border-[#7E3AED]"
                     />
                   </label>
@@ -464,6 +495,7 @@ export function AuditBuilder() {
   const [addCategory, setAddCategory] = React.useState<AssetCategorySlug | null>(null);
   const [presenting, setPresenting] = React.useState(false);
   const [benchmarkResponses, setBenchmarkResponses] = React.useState<Partial<Record<BenchmarkId, BenchmarkResponseSet>>>({});
+  const [assessmentDepth, setAssessmentDepth] = React.useState<AssessmentDepth>("pre");
   const [cisTier, setCisTier] = React.useState<1 | 2 | 3>(1);
   const fileInputRef = React.useRef<HTMLInputElement>(null);
 
@@ -480,6 +512,7 @@ export function AuditBuilder() {
   function navigate(view: ViewKey) {
     setActiveView(view);
     setVisibleLimit(INITIAL_VISIBLE_ROWS);
+    if (String(view).startsWith("compliance:")) setAssessmentDepth("pre");
   }
 
   async function handleUpload(file: File | null) {
@@ -599,7 +632,7 @@ export function AuditBuilder() {
   async function exportBenchmarkPresentation(benchmarkId: BenchmarkId) {
     setPresenting(true);
     try {
-      await exportCompliancePowerPoint(BENCHMARKS[benchmarkId], benchmarkResponses[benchmarkId] ?? {}, clientName, cisTier);
+      await exportCompliancePowerPoint(BENCHMARKS[benchmarkId], benchmarkResponses[benchmarkId] ?? {}, clientName, cisTier, assessmentDepth);
     } catch (error) {
       console.error("Unable to generate compliance PowerPoint report", error);
       setStatus("The compliance PowerPoint report could not be generated. Review the browser console for details and try again.");
@@ -826,6 +859,8 @@ export function AuditBuilder() {
                 key={activeBenchmarkId}
                 benchmark={activeBenchmark}
                 responses={benchmarkResponses[activeBenchmarkId] ?? {}}
+                assessmentDepth={assessmentDepth}
+                onAssessmentDepthChange={setAssessmentDepth}
                 cisTier={cisTier}
                 onCisTierChange={setCisTier}
                 onChange={(questionId, patch) => updateBenchmarkResponse(activeBenchmarkId, questionId, patch)}

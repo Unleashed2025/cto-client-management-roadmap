@@ -1,11 +1,20 @@
+import { DANZELL_QUESTIONS } from "./cyber-essentials-danzell";
+import { ISO_27001_ANNEX_A_QUESTIONS } from "./iso-27001-annex-a";
+
 export type BenchmarkId = "cis" | "cyber-essentials" | "cyber-essentials-plus" | "iso-27001";
 export type AssessmentAnswer = "not-assessed" | "pass" | "partial" | "fail" | "not-applicable";
+export type AssessmentDepth = "pre" | "full";
 
 export interface BenchmarkQuestion {
   id: string;
+  reference?: string;
   section: string;
   prompt: string;
   evidencePrompt: string;
+  guidance?: string;
+  answerType?: string;
+  logic?: string;
+  policyGuide?: string;
   tier?: 1 | 2 | 3;
 }
 
@@ -18,7 +27,8 @@ export interface BenchmarkDefinition {
   sourceLabel: string;
   sourceUrl: string;
   notice: string;
-  questions: BenchmarkQuestion[];
+  preQuestions: BenchmarkQuestion[];
+  fullQuestions: BenchmarkQuestion[];
 }
 
 const cisControls = [
@@ -156,6 +166,58 @@ const cyberEssentialsPlusQuestions = questions("cep", [
   ]],
 ]);
 
+const cyberEssentialsPlusDetailedQuestions = questions("cep-full", [
+  ["Assessment governance and prerequisites", [
+    ["Has the Cyber Essentials certificate scope been reconciled against the environment that will undergo Plus testing?", "Record certificate details, scope reconciliation, changes since certification, and approval."],
+    ["Can the assessor receive complete asset populations for every operating system, device type, cloud platform, and location?", "Record inventory exports, data owners, reconciliation checks, and known gaps."],
+    ["Are test contacts, technical owners, business approvers, and escalation routes confirmed for the assessment window?", "Record names, roles, availability, escalation paths, and delegated authority."],
+    ["Are backups, rollback plans, maintenance windows, and safety controls ready for assessor-led testing?", "Record change controls, recovery arrangements, exclusions, and approved testing windows."],
+    ["Have all previous Cyber Essentials nonconformities and declared exceptions been closed or explicitly accepted before testing?", "Record findings, remediation evidence, risk acceptance, and verification."],
+  ]],
+  ["External vulnerability assessment", [
+    ["Is the complete set of public IP addresses, domains, remote-access services, and internet-facing applications available to the assessor?", "Record the externally exposed asset register and independent discovery results."],
+    ["Have unauthenticated external scans been rehearsed against the intended scope?", "Record scan dates, tools, coverage, findings, and remediation."],
+    ["Are unsupported, end-of-life, or critically vulnerable internet-facing services absent from scope?", "Record version evidence, vulnerability results, and replacement actions."],
+    ["Are administrative interfaces inaccessible from unrestricted internet locations?", "Record source restrictions, VPN or zero-trust paths, MFA, and monitoring."],
+    ["Can every permitted inbound service be traced to a documented business need, owner, and current firewall rule?", "Record rule reviews, approvals, owners, and removed access."],
+  ]],
+  ["Authenticated device and patch testing", [
+    ["Can representative devices be supplied for each operating system and device type in scope?", "Record sampling populations, selected samples, and coverage rationale."],
+    ["Can authenticated checks prove that operating systems, applications, browsers, email clients, and security tools are supported?", "Record software inventories, versions, support evidence, and exceptions."],
+    ["Can authenticated checks prove that high-risk and critical fixes are installed within 14 days?", "Record patch reports, release dates, installation dates, failures, and exceptions."],
+    ["Are firmware and security updates for routers, firewalls, hypervisors, mobile devices, and appliances evidenced?", "Record firmware inventories, update status, and accountable owners."],
+    ["Are failed updates, missing devices, and stale management agents detected and corrected promptly?", "Record compliance monitoring, alert handling, and recent corrective actions."],
+  ]],
+  ["Account, privilege, and MFA verification", [
+    ["Can sampled user accounts be traced to approved individuals with unique credentials?", "Record account approvals, identity records, and sampled evidence."],
+    ["Can sampled privileged accounts be shown to be separate from normal browsing and email accounts?", "Record administrator inventories, account separation, and usage controls."],
+    ["Are dormant, leaver, shared, and unnecessary accounts absent or formally controlled in sampled systems?", "Record reviews, disablement evidence, shared-account controls, and exceptions."],
+    ["Is MFA technically enforced for all sampled cloud administrators where the service supports it?", "Record identity-provider policy, enforcement reports, and test evidence."],
+    ["Is MFA technically enforced for all sampled cloud users where the service supports it?", "Record coverage reports, conditional-access evidence, and exceptions."],
+  ]],
+  ["Secure configuration verification", [
+    ["Have default credentials been removed from sampled endpoints, appliances, applications, and cloud services?", "Record configuration checks and representative evidence."],
+    ["Are unnecessary services, ports, software, accounts, and automatic-execution features disabled on sampled devices?", "Record baseline checks, detected deviations, and remediation."],
+    ["Can sampled devices demonstrate enforced screen locking and suitable device-unlock controls?", "Record policy settings, timeout values, and observed test results."],
+    ["Are password, lockout, throttling, and passwordless settings consistent with the declared Cyber Essentials answers?", "Record technical settings, test evidence, and exceptions."],
+    ["Are secure configuration baselines centrally managed and protected from unauthorised user changes?", "Record management tooling, policy assignment, compliance status, and tamper controls."],
+  ]],
+  ["Malware and content-protection testing", [
+    ["Is malware protection active, current, centrally monitored, and tamper-protected on every sampled applicable device?", "Record console status, update health, policy, and tamper-protection evidence."],
+    ["Will approved malware test files be blocked when delivered through email to sampled users and devices?", "Record rehearsal results, detections, alerts, and unresolved gaps."],
+    ["Will approved malware test files be blocked when downloaded through a web browser?", "Record web test results, browser coverage, alerts, and remediation."],
+    ["Where allow-listing or application-store controls are used, are unapproved applications prevented from running?", "Record enforced policies, attempted tests, outcomes, and exceptions."],
+    ["Can security detections be linked to monitored alerts and timely operational response?", "Record alert evidence, triage workflow, ownership, and response times."],
+  ]],
+  ["Findings, remediation, and retest", [
+    ["Is there a controlled process to log every assessor finding with severity, owner, action, and deadline?", "Record the findings register, accountability, and governance."],
+    ["Can urgent configuration and patch changes be implemented safely during the permitted remediation period?", "Record change windows, approvals, testing, and rollback arrangements."],
+    ["Is evidence retained in a form that enables the assessor to verify remediation without ambiguity?", "Record screenshots, exports, timestamps, device references, and validation."],
+    ["Are failed samples investigated across the wider population rather than corrected only on the tested device?", "Record root-cause analysis, population-wide checks, and broad remediation."],
+    ["Has leadership reviewed residual risk and confirmed readiness before external testing or retesting?", "Record readiness review, unresolved risks, decisions, and sign-off."],
+  ]],
+]);
+
 const isoQuestions = questions("iso", [
   ["Clause 4 — Organisational context", [
     ["Has the organisation defined the internal and external issues that affect its information security management system?", "Record the context review, interested parties, dependencies, and review date."],
@@ -212,6 +274,22 @@ const isoQuestions = questions("iso", [
   ]],
 ]);
 
+const cisPreQuestions = [
+  ...cisQuestions.filter((question) => question.tier === 1),
+  ...cisQuestions.filter((question) => question.tier === 2).slice(0, 7),
+];
+const cyberEssentialsFullQuestions: BenchmarkQuestion[] = DANZELL_QUESTIONS.map((question) => ({ ...question }));
+const cyberEssentialsPlusPreQuestions = [
+  ...cyberEssentialsPlusQuestions,
+  ...cyberEssentialsPlusDetailedQuestions.slice(0, 7),
+];
+const isoClauseQuestions = isoQuestions.filter((question) => question.section.startsWith("Clause "));
+const isoPreQuestions = isoQuestions.slice(0, 25);
+const isoFullQuestions: BenchmarkQuestion[] = [
+  ...isoClauseQuestions,
+  ...ISO_27001_ANNEX_A_QUESTIONS.map((question) => ({ ...question })),
+];
+
 export const BENCHMARKS: Record<BenchmarkId, BenchmarkDefinition> = {
   cis: {
     id: "cis",
@@ -222,18 +300,20 @@ export const BENCHMARKS: Record<BenchmarkId, BenchmarkDefinition> = {
     sourceLabel: "Official CIS Controls and licensing",
     sourceUrl: "https://www.cisecurity.org/controls/v8-1",
     notice: "Original assessment wording aligned to CIS Controls themes. It does not reproduce the licensed safeguard text and is not a CIS certification.",
-    questions: cisQuestions,
+    preQuestions: cisPreQuestions,
+    fullQuestions: cisQuestions,
   },
   "cyber-essentials": {
     id: "cyber-essentials",
     title: "Cyber Essentials Readiness",
     shortTitle: "Cyber Essentials",
-    version: "Current UK scheme structure",
-    description: "Readiness assessment covering scope and the five Cyber Essentials technical control areas.",
+    version: "Danzell v16.3 · 2026",
+    description: "Pre-readiness screening followed by full coverage of all 104 numbered items in the supplied 2026 Danzell question set.",
     sourceLabel: "Official IASME question-set preview",
     sourceUrl: "https://iasme.co.uk/cyber-essentials/preview-the-self-assessment-questions-for-cyber-essentials/",
-    notice: "Original readiness wording. Use the current official IASME preparation booklet and certification portal for the exact live question set.",
-    questions: cyberEssentialsQuestions,
+    notice: "The full assessment covers every numbered item in the user-supplied Cyber Essentials 2026 Danzell v16.3 workbook. It preserves official references while using original readiness wording; confirm final certification answers in the IASME portal.",
+    preQuestions: cyberEssentialsQuestions,
+    fullQuestions: cyberEssentialsFullQuestions,
   },
   "cyber-essentials-plus": {
     id: "cyber-essentials-plus",
@@ -244,7 +324,8 @@ export const BENCHMARKS: Record<BenchmarkId, BenchmarkDefinition> = {
     sourceLabel: "Official IASME Plus guidance",
     sourceUrl: "https://iasme.co.uk/articles/cyber-essentials-and-cyber-essentials-plus-what-is-the-difference/",
     notice: "Cyber Essentials Plus does not have a separate self-assessment question set. This readiness checklist prepares evidence and systems for independent technical testing.",
-    questions: cyberEssentialsPlusQuestions,
+    preQuestions: cyberEssentialsPlusPreQuestions,
+    fullQuestions: [...cyberEssentialsPlusQuestions, ...cyberEssentialsPlusDetailedQuestions],
   },
   "iso-27001": {
     id: "iso-27001",
@@ -254,8 +335,9 @@ export const BENCHMARKS: Record<BenchmarkId, BenchmarkDefinition> = {
     description: "Readiness assessment across clauses 4–10 and the four Annex A control themes.",
     sourceLabel: "Official ISO/IEC 27001:2022 page",
     sourceUrl: "https://www.iso.org/standard/27001",
-    notice: "Original readiness wording. ISO/IEC 27001 is copyrighted and has no official free questionnaire; obtain the licensed standard for certification work.",
-    questions: isoQuestions,
+    notice: "The full assessment covers clauses 4–10 and all 93 Annex A control identifiers using original readiness wording. Obtain the licensed ISO standard for certification work.",
+    preQuestions: isoPreQuestions,
+    fullQuestions: isoFullQuestions,
   },
 };
 
