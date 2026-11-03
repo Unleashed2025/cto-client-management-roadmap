@@ -28,19 +28,13 @@ export const REPORT_STRUCTURE = [
   "CTO Summary",
   "DfE Alignment",
   "High Level Information",
-  "Data Infrastructure — highlights",
-  "Data Infrastructure — strategy",
-  "Network & WiFi — highlights",
-  "Network & WiFi — strategy",
-  "Client Compute — highlights",
-  "Client Compute — strategy",
-  "Software — highlights",
-  "Software — strategy",
-  "Cyber Security Controls — highlights",
-  "Cyber Security Controls — strategy",
+  ...ASSET_CATEGORY_SLUGS.flatMap((slug) => [
+    `${ASSET_CATEGORIES[slug].label} — highlights`,
+    `${ASSET_CATEGORIES[slug].label} — example flagged items`,
+    `${ASSET_CATEGORIES[slug].label} — strategy`,
+  ]),
   "Representative Audited Items",
-  "Representative Flagged Items",
-] as const;
+];
 
 const CATEGORY_COLOR: Record<AssetCategorySlug, [number, number, number]> = {
   "data-infra": BRAND.navy,
@@ -64,7 +58,6 @@ export interface ReportModel {
   categorySummary: ReportCategorySummary[];
   groupSummary: Array<{ category: string; group: string; total: number; flagged: number }>;
   inventorySample: AuditRow[];
-  flaggedSample: AuditRow[];
   totalRows: number;
   totalFlagged: number;
   populatedSheets: number;
@@ -77,6 +70,8 @@ export interface CategoryReportSection {
   flagged: number;
   warnings: number;
   groups: Array<{ label: string; total: number; flagged: number }>;
+  flaggedThemes: Array<{ label: string; count: number }>;
+  flaggedSample: AuditRow[];
   whatThisMeans: string;
   whatIfNothing: string;
   plan3Months: string[];
@@ -115,6 +110,17 @@ function prioritySample(rows: AuditRow[], maximum: number): AuditRow[] {
       return (riskOrder[text(right.riskRating) as keyof typeof riskOrder] ?? 0) - (riskOrder[text(left.riskRating) as keyof typeof riskOrder] ?? 0);
     });
   return balancedSample(priority, maximum);
+}
+
+function flagTheme(reason: string): string {
+  const normalized = reason.toLowerCase();
+  if (normalized.includes("operating system")) return "Operating system";
+  if (normalized.includes("warranty")) return "Warranty";
+  if (normalized.includes("end of support") || normalized.includes("support date")) return "Support life";
+  if (normalized.includes("service life")) return "Service life";
+  if (normalized.includes("core switch") || normalized.includes("firewall") || normalized.includes("availability") || normalized.includes("resilience")) return "Resilience";
+  if (normalized.includes("cyber control") || normalized.includes("installed") || normalized.includes("implemented")) return "Control implementation";
+  return "Other flagged condition";
 }
 
 function categoryNarrative(slug: AssetCategorySlug, total: number, flagged: number, warnings: number): Pick<CategoryReportSection, "whatThisMeans" | "whatIfNothing" | "plan3Months" | "plan12Months" | "plan2Years"> {
@@ -191,7 +197,6 @@ export function buildReportModel(audit: BrowserAudit, clientName: string): Repor
     categorySummary,
     groupSummary,
     inventorySample: balancedSample(inventoryRows, 18, inventoryCategories),
-    flaggedSample: prioritySample(audit.rows, 14),
     totalRows: audit.rows.length,
     totalFlagged: audit.rows.filter((row) => row.flagged).length,
     populatedSheets: new Set(audit.sheets.filter((sheet) => sheet.rowsImported > 0).map((sheet) => sheet.sheetName)).size,
@@ -214,6 +219,18 @@ export function buildCategoryReportSections(audit: BrowserAudit): CategoryReport
         total: group.rows.length,
         flagged: group.rows.filter((row) => row.flagged).length,
       })),
+      flaggedThemes: [...rows.reduce((themes, row) => {
+        if (!row.flagged) return themes;
+        for (const reason of row.flagReasons) {
+          const label = flagTheme(reason);
+          if (!themes.has(label)) themes.set(label, new Set<string>());
+          themes.get(label)?.add(row.id);
+        }
+        return themes;
+      }, new Map<string, Set<string>>())]
+        .map(([label, rowIds]) => ({ label, count: rowIds.size }))
+        .sort((left, right) => right.count - left.count || left.label.localeCompare(right.label)),
+      flaggedSample: prioritySample(rows.filter((row) => row.flagged), 12),
       ...categoryNarrative(slug, rows.length, flagged, warnings),
     };
   });
@@ -248,8 +265,8 @@ function inventorySampleRow(row: AuditRow): string[] {
 function flaggedSampleRow(row: AuditRow): string[] {
   const config = ASSET_CATEGORIES[row.auditCategory];
   return [
-    config.label,
     compact(row[config.titleField], 40),
+    compact(row.sectionTitle, 30),
     compact(row.status ?? row.warrantyStatus ?? row.supportStatus, 24),
     compact(row.riskRating ?? row.replacementPriority, 18),
     compact(row.flagReasons.join("; ") || row.warnReasons.join("; "), 100),
@@ -491,17 +508,48 @@ export async function exportFullAuditReport(audit: BrowserAudit, clientName: str
       margin: { left: margin, right: margin },
     });
     y = lastTableY() + 16;
-    doc.setFillColor(...BRAND.white);
-    doc.setDrawColor(217, 231, 245);
-    doc.roundedRect(margin, y, pageWidth - margin * 2, Math.min(92, pageHeight - y - 34), 10, 10, "FD");
+    autoTable(doc, {
+      startY: y,
+      head: [["Flagged category", "Quantity of items flagged"]],
+      body: section.flaggedThemes.length > 0
+        ? section.flaggedThemes.map((theme) => [theme.label, theme.count])
+        : [["No flagged categories", 0]],
+      theme: "grid",
+      headStyles: { fillColor: BRAND.pink, textColor: BRAND.white, fontSize: 8.5 },
+      bodyStyles: { fontSize: 8.5, cellPadding: 4 },
+      margin: { left: margin, right: margin },
+      columnStyles: { 0: { cellWidth: pageWidth - margin * 2 - 180 }, 1: { cellWidth: 180, halign: "center" } },
+    });
+
+    y = newPage(`${section.label} — example flagged items`, `${clientName} · representative flagged detail limited to one page`, BRAND.pink);
     doc.setTextColor(...BRAND.navy);
     doc.setFont("helvetica", "bold");
     doc.setFontSize(10);
-    doc.text("Section highlight", margin + 16, y + 24);
-    doc.setFont("helvetica", "normal");
-    doc.setFontSize(8);
+    doc.text("Example flagged items limited to one page — see the raw data for the complete flagged-item list.", margin, y);
+    if (section.flaggedSample.length > 0) {
+      autoTable(doc, {
+        startY: y + 12,
+        head: [["Item", "Section", "Status", "Risk", "Flag reason", "Action / Notes"]],
+        body: section.flaggedSample.map(flaggedSampleRow),
+        theme: "grid",
+        headStyles: { fillColor: BRAND.pink, textColor: BRAND.white, fontSize: 7.3 },
+        bodyStyles: { fontSize: 6.5, cellPadding: 2.5, valign: "top", overflow: "linebreak" },
+        margin: { left: margin, right: margin, top: 100 },
+        columnStyles: { 0: { cellWidth: 105 }, 1: { cellWidth: 92 }, 2: { cellWidth: 65 }, 3: { cellWidth: 52 }, 4: { cellWidth: 205 }, 5: { cellWidth: 205 } },
+      });
+    } else {
+      doc.setFillColor(...BRAND.white);
+      doc.setDrawColor(217, 231, 245);
+      doc.roundedRect(margin, y + 32, pageWidth - margin * 2, 90, 10, 10, "FD");
+      doc.setTextColor(...BRAND.slate);
+      doc.setFont("helvetica", "normal");
+      doc.setFontSize(10);
+      doc.text("No flagged items are currently recorded for this section.", margin + 18, y + 70);
+    }
     doc.setTextColor(...BRAND.slate);
-    doc.text(doc.splitTextToSize(section.whatThisMeans, pageWidth - margin * 2 - 32), margin + 16, y + 44, { lineHeightFactor: 1.2 });
+    doc.setFont("helvetica", "italic");
+    doc.setFontSize(8);
+    doc.text(`${section.flaggedSample.length} example item(s) shown from ${section.flagged} flagged record(s).`, margin, pageHeight - 24);
 
     newPage(`${section.label} — strategy`, `${clientName} · what this means, what if nothing changes, and the 3 month / 12 month / 2 year roadmap`, color);
     const cardWidth = (pageWidth - margin * 2 - 22) / 2;
@@ -532,26 +580,6 @@ export async function exportFullAuditReport(audit: BrowserAudit, clientName: str
   doc.setFont("helvetica", "italic");
   doc.setFontSize(8);
   doc.text(`${model.inventorySample.length} examples shown from the Data Infrastructure, Network and Client Compute inventories.`, margin, pageHeight - 24);
-
-  y = newPage("Representative Flagged Items", `${clientName} · example priority list only`, BRAND.pink);
-  doc.setTextColor(...BRAND.navy);
-  doc.setFont("helvetica", "bold");
-  doc.setFontSize(10);
-  doc.text("Representative/example flagged list — refer to the raw workbook for the complete flagged-item detail.", margin, y);
-  autoTable(doc, {
-    startY: y + 12,
-    head: [["Category", "Item", "Status", "Risk", "Reason", "Action / Notes"]],
-    body: model.flaggedSample.map(flaggedSampleRow),
-    theme: "grid",
-    headStyles: { fillColor: BRAND.pink, textColor: 255, fontSize: 7.3 },
-    bodyStyles: { fontSize: 6.5, cellPadding: 2.5, valign: "top", overflow: "linebreak" },
-    margin: { left: margin, right: margin, top: 100 },
-    columnStyles: { 0: { cellWidth: 86 }, 1: { cellWidth: 105 }, 2: { cellWidth: 62 }, 3: { cellWidth: 52 }, 4: { cellWidth: 205 }, 5: { cellWidth: 205 } },
-  });
-  doc.setTextColor(...BRAND.slate);
-  doc.setFont("helvetica", "italic");
-  doc.setFontSize(8);
-  doc.text(`${model.flaggedSample.length} representative priority items shown from ${model.totalFlagged} flagged records.`, margin, pageHeight - 24);
 
   downloadBlob(
     doc.output("blob"),

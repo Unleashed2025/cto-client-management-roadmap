@@ -63,8 +63,8 @@ function inventorySampleRow(row: AuditRow): string[] {
 function flaggedSampleRow(row: AuditRow): string[] {
   const config = ASSET_CATEGORIES[row.auditCategory];
   return [
-    config.label,
     compact(row[config.titleField], 30),
+    compact(row.sectionTitle, 24),
     compact(row.status ?? row.warrantyStatus ?? row.supportStatus, 20),
     compact(row.riskRating ?? row.replacementPriority, 16),
     compact(row.flagReasons.join("; ") || row.warnReasons.join("; "), 76),
@@ -261,10 +261,29 @@ export async function exportPowerPointReport(audit: BrowserAudit, clientName: st
         : [["No imported records", "0", "0", "0%"]],
       color,
     ), { x: 0.55, y: 2.45, w: 7.2, h: 3.5, colW: [4.15, 0.95, 0.95, 1.15], rowH: 0.31, fontSize: 8.5, margin: 0.05, border: { color: COLORS.line, pt: 1 }, autoPage: false });
-    highlights.addShape(pptx.ShapeType.roundRect, { x: 8.0, y: 2.45, w: 4.75, h: 3.5, rectRadius: 0.06, fill: { color: COLORS.white }, line: { color: COLORS.line, pt: 1 } });
-    highlights.addText("SECTION HIGHLIGHT", { x: 8.3, y: 2.78, w: 3.9, h: 0.18, bold: true, fontSize: 9, color, margin: 0 });
-    highlights.addText(section.whatThisMeans, { x: 8.3, y: 3.18, w: 4.15, h: 2.25, fontSize: 12, color: COLORS.slate, valign: "top", margin: 0, breakLine: false });
-    addFooter(highlights, "Counts and category breakdowns use the complete imported workbook.");
+    highlights.addTable(tableRows(
+      ["Flagged category", "Qty"],
+      section.flaggedThemes.length > 0
+        ? section.flaggedThemes.map((theme) => [theme.label, String(theme.count)])
+        : [["No flagged categories", "0"]],
+      COLORS.pink,
+    ), { x: 8.0, y: 2.45, w: 4.75, h: 3.5, colW: [3.75, 1.0], rowH: 0.39, fontSize: 9.5, margin: 0.06, border: { color: COLORS.line, pt: 1 }, autoPage: false });
+    addFooter(highlights, "Flag categories show the quantity of unique items affected; a single item can contribute to more than one category.");
+
+    const flagged = addSlide();
+    addHeader(flagged, slideCount, `${section.label} — example flagged items`, `${clientName} · representative flagged detail limited to one page`, COLORS.pink);
+    flagged.addText("Example flagged items limited to one page — see the raw data for the complete flagged-item list.", { x: 0.58, y: 1.18, w: 12.1, h: 0.23, bold: true, fontSize: 11, color: COLORS.navy, margin: 0 });
+    if (section.flaggedSample.length > 0) {
+      flagged.addTable(tableRows(
+        ["Item", "Section", "Status", "Risk", "Flag reason", "Action / Notes"],
+        section.flaggedSample.map(flaggedSampleRow),
+        COLORS.pink,
+      ), { x: 0.55, y: 1.53, w: 12.2, h: 5.35, colW: [1.8, 1.5, 1.0, 0.75, 3.55, 3.6], rowH: 0.37, fontSize: 6.8, margin: 0.035, border: { color: COLORS.line, pt: 0.8 }, autoPage: false });
+    } else {
+      flagged.addShape(pptx.ShapeType.roundRect, { x: 0.7, y: 1.75, w: 11.9, h: 1.4, rectRadius: 0.06, fill: { color: COLORS.white }, line: { color: COLORS.line, pt: 1 } });
+      flagged.addText("No flagged items are currently recorded for this section.", { x: 1.0, y: 2.22, w: 11.3, h: 0.28, fontSize: 15, color: COLORS.slate, align: "center", margin: 0 });
+    }
+    addFooter(flagged, `${section.flaggedSample.length} example item(s) shown from ${section.flagged} flagged record(s).`);
 
     const strategy = addSlide();
     addHeader(strategy, slideCount, `${section.label} — strategy`, `${clientName} · what this means, what if nothing changes, and the 3 month / 12 month / 2 year roadmap`, color);
@@ -285,16 +304,6 @@ export async function exportPowerPointReport(audit: BrowserAudit, clientName: st
     COLORS.cyan,
   ), { x: 0.55, y: 1.53, w: 12.2, h: 5.35, colW: [1.8, 2.15, 1.8, 4.65, 1.8], rowH: 0.265, fontSize: 7.2, margin: 0.04, border: { color: COLORS.line, pt: 0.8 }, autoPage: false });
   addFooter(inventory, `${model.inventorySample.length} examples shown from Data Infrastructure, Network and Client Compute.`);
-
-  const flagged = addSlide();
-  addHeader(flagged, slideCount, "Representative Flagged Items", `${clientName} · example priority list only`, COLORS.pink);
-  flagged.addText("Representative/example flagged list — refer to the raw workbook for the complete flagged-item detail.", { x: 0.58, y: 1.18, w: 12.1, h: 0.23, bold: true, fontSize: 11, color: COLORS.navy, margin: 0 });
-  flagged.addTable(tableRows(
-    ["Category", "Item", "Status", "Risk", "Reason", "Action / Notes"],
-    model.flaggedSample.map(flaggedSampleRow),
-    COLORS.pink,
-  ), { x: 0.55, y: 1.53, w: 12.2, h: 5.35, colW: [1.55, 1.75, 1.05, 0.8, 3.55, 3.5], rowH: 0.31, fontSize: 6.8, margin: 0.035, border: { color: COLORS.line, pt: 0.8 }, autoPage: false });
-  addFooter(flagged, `${model.flaggedSample.length} representative priority items shown from ${model.totalFlagged} flagged records.`);
 
   if (slideCount !== REPORT_STRUCTURE.length) {
     throw new Error(`Expected ${REPORT_STRUCTURE.length} slides but generated ${slideCount}`);
